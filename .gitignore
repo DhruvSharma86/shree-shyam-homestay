@@ -1,0 +1,11 @@
+# Root gitignore — secrets & local state are never committed.
+.env
+*.env
+!.env.example
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.venv/
+node_modules/
+Git-Auto-Commit-Push.cmd

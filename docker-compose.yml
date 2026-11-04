@@ -1,0 +1,21 @@
+# Local development stack: PostgreSQL for the backend.
+# The frontend service is added in a later phase.
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: hotel_app
+      POSTGRES_PASSWORD: change_me
+      POSTGRES_DB: shree_shyam
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hotel_app -d shree_shyam"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  pgdata:
