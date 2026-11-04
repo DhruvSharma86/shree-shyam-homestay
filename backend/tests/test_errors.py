@@ -8,9 +8,7 @@ from app.core.errors import ApiError, error_payload
 def test_error_payload_shape() -> None:
     """error_payload produces the documented envelope."""
     body = error_payload("NOT_FOUND", "Missing.", {"id": "x"})
-    assert body == {
-        "error": {"code": "NOT_FOUND", "message": "Missing.", "details": {"id": "x"}}
-    }
+    assert body == {"error": {"code": "NOT_FOUND", "message": "Missing.", "details": {"id": "x"}}}
 
 
 def test_error_payload_omits_empty_details() -> None:
@@ -21,7 +19,6 @@ def test_error_payload_omits_empty_details() -> None:
 
 def test_api_error_exception_renders_envelope(client: TestClient) -> None:
     """ApiError raised in a handler renders the standard envelope."""
-
 
     app = client.app
 

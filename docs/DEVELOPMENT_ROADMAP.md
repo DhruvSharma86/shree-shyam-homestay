@@ -1,7 +1,7 @@
 # Development Roadmap — Shree Shyam Home Stay
 
-> **Current status: Phase 1.1 (backend foundation) — ✅ complete.**
-> Phase 0 docs reviewed; Phase 1.1 delivered (config, DB infra, logging, error envelope, health endpoints, pytest harness, Alembic, docker-compose Postgres). Next: Phase 1.2 — users/sessions models, session auth, RBAC, audit logging for auth events, first migration.
+> **Current status: Phase 1.2 (auth, users, RBAC) — ✅ complete.**
+> Phase 1.1 delivered (config, DB infra, logging, error envelope, health endpoints, pytest harness, Alembic, docker-compose Postgres). Phase 1.2 delivered: `users`/`sessions`/`audit_log` models, Argon2id session-cookie auth (login/logout/me/change-password), default-deny RBAC (ADMIN/RECEPTIONIST), user management endpoints, one-time initial ADMIN bootstrap, first Alembic migration (`bb79107c6b65`), GitHub Actions CI with PostgreSQL integration tests. 53 tests passing locally (SQLite); PostgreSQL job pending first CI run — **not yet verified against real PostgreSQL**.
 
 ## Phase 0 — Documentation & design ✅ (this milestone)
 - [x] README, SRS, Architecture, Database, RBAC, Booking/Billing workflows, Guest portal, API design, Roadmap
@@ -17,13 +17,14 @@
 - **Exit criteria met:** app starts, health endpoints verified live, tests green, alembic `check` clean (no pending ops).
 - ⚠️ **Not done (belongs to 1.2+):** session auth, RBAC middleware, users/sessions models, ADMIN bootstrap, first migration.
 
-### Phase 1.2 — Auth, users, RBAC (next)
-- `users`, `sessions` models + first Alembic migration; env-seeded initial ADMIN bootstrap
-- Session-cookie auth (login/logout/me), idle + absolute timeouts, password hashing (argon2id)
-- RBAC permission definitions + `require_permission` dependency (default-deny)
-- Audit logging for auth events; auth API tests
-- Frontend skeleton (Next.js + Tailwind + shadcn/ui) if scheduled here
-- **Exit criteria:** admin can log in; RBAC denies by default; tests green; migrations run clean from scratch.
+### Phase 1.2 — Auth, users, RBAC ✅ (complete, 2026-11-05)
+- [x] `users`, `sessions`, `audit_log` models + first Alembic migration (`bb79107c6b65_auth_users_sessions_audit_log.py`); one-time initial ADMIN bootstrap (env credentials, refuses when users exist)
+- [x] Session-cookie auth: `POST /api/v1/auth/login|logout|change-password`, `GET /api/v1/auth/me`; Argon2id; idle (30 min) + absolute (12 h) timeouts; generic failure messages; session rotation on login; CSRF (double-submit); per-username login rate limiting
+- [x] RBAC: 22 permissions in `app/core/permissions.py`, default-deny mapping (ADMIN = all, RECEPTIONIST = operational subset); `require_permission` dependency enforced server-side; user management endpoints under `users.manage` (create/list/patch/reset-password/deactivate); last-active-ADMIN deactivation blocked
+- [x] Audit logging for auth + user-management events (no secrets in metadata); auth/RBAC/bootstrap/audit test suites — **53 passed, 2 skipped** (PostgreSQL tests skip locally, enforced in CI via `--run-postgres-check`)
+- [x] CI: `.github/workflows/ci.yml` (ruff + mypy + SQLite tests; Alembic upgrade on clean PostgreSQL + schema verification + PostgreSQL integration tests that FAIL if skipped)
+- [ ] Frontend skeleton (Next.js + Tailwind + shadcn/ui) — deferred to Phase 2
+- **Exit criteria met (locally):** admin can log in; RBAC denies by default; tests green; migration runs clean on SQLite. ⚠️ **PostgreSQL verification requires the first CI run** (no Docker/PostgreSQL on this dev machine).
 
 ## Phase 2 — Hotel configuration & users management
 - `hotel_info`, `room_types`, `rooms`, `room_rates` (versioned), `tax_settings` (versioned, default NONE), `restaurant_info`, `cab_info`

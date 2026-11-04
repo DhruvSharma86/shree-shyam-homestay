@@ -27,30 +27,32 @@ PostgreSQL. Money: `NUMERIC(12,2)`. All tables: `id UUID (pk, default gen_random
 
 ## 2. Entity definitions & key fields
 
-### 2.1 `users`
+### 2.1 `users` — ✅ implemented (Phase 1.2, migration `bb79107c6b65`)
 | Field | Type | Notes |
 |---|---|---|
 | id | UUID PK | |
-| username | VARCHAR(64) UNIQUE | login id |
+| username | VARCHAR(64) UNIQUE (indexed) | login id |
 | email | VARCHAR(255) UNIQUE NULL | |
-| password_hash | TEXT | argon2id/bcrypt; never plaintext |
+| password_hash | TEXT | **Argon2id** (`argon2-cffi`); plaintext never stored/logged |
 | full_name | VARCHAR(120) | |
-| role | ENUM('ADMIN','RECEPTIONIST') | |
+| role | VARCHAR(32) | `ADMIN` / `RECEPTIONIST` (validated at API layer; application enforces the two-role rule) |
 | is_active | BOOLEAN DEFAULT TRUE | deactivation instead of delete |
-| last_login_at | TIMESTAMPTZ NULL | |
-| created_by | UUID FK → users | audit trail |
-| created_at / updated_at | TIMESTAMPTZ | |
+| last_login_at | TIMESTAMPTZ NULL | updated on every login |
+| created_by | UUID FK → users NULL | audit trail (NULL for bootstrap admin) |
+| created_at / updated_at | TIMESTAMPTZ | server defaults |
 
-### 2.2 `sessions`
+### 2.2 `sessions` — ✅ implemented (Phase 1.2)
 | Field | Type | Notes |
 |---|---|---|
 | id | UUID PK | opaque session id |
-| session_token_hash | TEXT UNIQUE | store hash of cookie value |
-| user_id | FK → users | |
-| expires_at | TIMESTAMPTZ | absolute expiry |
-| last_seen_at | TIMESTAMPTZ | idle-timeout tracking |
-| ip_address / user_agent | VARCHAR | security review |
-| revoked_at | TIMESTAMPTZ NULL | logout / admin revoke |
+| session_token_hash | TEXT UNIQUE (indexed) | **SHA-256 hash** of cookie token; plaintext never stored |
+| user_id | FK → users ON DELETE CASCADE (indexed) | |
+| created_at | TIMESTAMPTZ | server default |
+| last_seen_at | TIMESTAMPTZ | idle-timeout tracking (30 min default, configurable) |
+| expires_at | TIMESTAMPTZ | absolute expiry (12 h default, configurable) |
+| revoked_at | TIMESTAMPTZ NULL | logout / expiry / password change / deactivation |
+| ip_address / user_agent | VARCHAR(45/512) | security review |
+| *(no separate `idle_expiry` column)* | | Idle expiry is computed: `last_seen_at + idle_timeout`, enforced in `app/auth/service.py::get_session_user` |
 
 ### 2.3 `hotel_info` (singleton row — enforced by id check or unique `singleton_key`)
 `id`, `name` (default "Shree Shyam Home Stay"), `address_text`, `phone`, `email`, `website_url`, `maps_url`, `check_in_time`, `check_out_time`, `wifi_ssid`, `wifi_password`, timezone. **All values TBD/configurable — no invented data.**
@@ -118,8 +120,8 @@ Positive = charge; negative = discount/reversal (keeps balance math simple: bala
 `id`, `booking_id FK`, `amount NUMERIC(12,2) > 0`, `mode ENUM('CASH','UPI','CARD_POS')`, `payment_stage ENUM('ADVANCE','CHECK_IN','CHECKOUT','OTHER')`, `reference_note NULL`, `received_by FK → users`, `received_at`, `reversed_payment_id NULL` + optional `reversal` rows for refunds/voids (model TBD in billing workflow doc).
 *No UPDATE/DELETE allowed post-commit except via reversal rows.*
 
-### 2.13 `audit_log` (append-only)
-`id`, `actor_user_id FK`, `action VARCHAR(64)` (e.g. `USER_CREATED`, `RATE_CHANGED`, `DISCOUNT_APPLIED`, `PAYMENT_REVERSED`), `entity_type`, `entity_id`, `before JSONB NULL`, `after JSONB NULL`, `ip_address`, `created_at`. Index on `created_at`, `actor_user_id`.
+### 2.13 `audit_log` (append-only) — ✅ implemented (Phase 1.2)
+`id UUID PK`, `actor_user_id FK → users ON DELETE SET NULL NULL` (NULL = system events such as bootstrap), `action VARCHAR(64) INDEXED` (`AUTH_LOGIN`, `AUTH_LOGOUT`, `AUTH_LOGIN_FAILED`, `PASSWORD_CHANGED`, `PASSWORD_RESET`, `USER_CREATED`, `USER_UPDATED`, `USER_DEACTIVATED`, `SESSIONS_REVOKED`, `ADMIN_BOOTSTRAPPED`, later: `RATE_CHANGED`, `DISCOUNT_APPLIED`, `PAYMENT_REVERSED`, ...), `resource_type VARCHAR(64)`, `resource_id VARCHAR(128)`, `metadata_json JSON NULL` (**safe, non-secret context only** — never passwords/tokens), `ip_address VARCHAR(45) NULL`, `created_at TIMESTAMPTZ INDEXED`. Write path: `app/auth/service.py::write_audit`.
 
 ### 2.14 `message_log`
 `id`, `booking_id FK NULL`, `channel VARCHAR(16)` ('WHATSAPP'), `message_type VARCHAR(32)`, `recipient_phone`, `status ENUM('QUEUED','SENT','FAILED','MOCKED')`, `provider_message_id NULL`, `error TEXT NULL`, `created_at`.

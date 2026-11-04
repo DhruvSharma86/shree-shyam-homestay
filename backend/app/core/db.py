@@ -34,8 +34,13 @@ def get_engine() -> Engine:
         settings = get_settings()
         url = settings.database_url
         if url.startswith("sqlite"):
-            # SQLite: single connection pool for file DBs; no pool sizing.
-            _engine = create_engine(url, future=True)
+            # SQLite: allow cross-thread use (TestClient runs handlers in a
+            # worker thread) and keep a single connection for in-memory DBs.
+            _engine = create_engine(
+                url,
+                future=True,
+                connect_args={"check_same_thread": False},
+            )
         else:
             _engine = create_engine(
                 url,

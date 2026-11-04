@@ -10,9 +10,9 @@ from logging.config import fileConfig
 
 from sqlalchemy import engine_from_config, pool
 
-# Importing the app package registers nothing yet (no models in Phase 1.1),
-# but keeps the discovery hook in place for later phases.
-import app  # noqa: F401
+# Importing the models package registers all ORM models on Base.metadata
+# so Alembic can autogenerate/inspect them.
+import app.models  # noqa: F401
 from alembic import context
 from app.core.config import get_settings
 from app.core.db import Base

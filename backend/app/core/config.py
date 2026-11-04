@@ -43,8 +43,14 @@ class Settings(BaseSettings):
     # authentication system. They are declared here so the shape is stable.
     session_secret: str = "dev-only-insecure-secret-change-me"
     session_cookie_name: str = "sshs_session"
+    csrf_cookie_name: str = "sshs_csrf"
     session_idle_timeout_minutes: int = 30
     session_absolute_timeout_hours: int = 12
+
+    # --- Login rate limiting ------------------------------------------------
+    # Per-username failed-login budget inside a sliding window.
+    login_rate_limit_attempts: int = 10
+    login_rate_limit_window_seconds: int = 300
 
     # --- Initial admin bootstrap (Phase 1.2) -----------------------------
     # Used only to create the first ADMIN account when the users table is

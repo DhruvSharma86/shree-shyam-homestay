@@ -1,10 +1,10 @@
 # Backend — Shree Shyam Home Stay Management System
 
 FastAPI backend (modular monolith) for the Shree Shyam Home Stay Management
-System. **Phase 1.1: foundation only** — configuration, database
-infrastructure, structured logging, error envelope, health endpoints, and
-the pytest harness. No business logic yet (no bookings, guests, payments,
-auth, or frontend — those arrive in later phases).
+System. **Phase 1.2** — foundation (configuration, DB infra, structured
+logging, error envelope, health endpoints, pytest harness) **plus**
+authentication, user management, and RBAC. No bookings, guests, payments,
+or frontend yet (later phases).
 
 ## Stack
 
@@ -22,13 +22,19 @@ backend/
 │   │   ├── config.py      # Env-based Settings (pydantic-settings)
 │   │   ├── db.py          # Engine/session factory, Base, connection check
 │   │   ├── logging_config.py  # JSON structured logging
-│   │   └── errors.py      # Error envelope + exception handlers
+│   │   ├── errors.py      # Error envelope + exception handlers
+│   │   ├── security.py    # Argon2id passwords, token hashing
+│   │   └── permissions.py # Permission identifiers + default-deny role map
+│   ├── models/            # users, sessions, audit_log (SQLAlchemy 2.0)
+│   ├── auth/              # login/logout/me/change-password, users router,
+│   │                      # service, dependencies, rate_limit, bootstrap CLI
 │   └── api/
 │       └── health.py      # GET /health, /health/live, /health/ready
 ├── alembic/               # Alembic env (URL from env) + version template
-├── tests/                 # pytest suite (SQLite in-memory by default)
+├── tests/                 # pytest suite (SQLite in-memory by default;
+│                          # PostgreSQL integration tests run in CI)
 ├── .env.example           # Template — copy to .env, never commit .env
-└── pyproject.toml         # Dependencies + pytest/ruff config
+└── pyproject.toml         # Dependencies + pytest/ruff/mypy config
 ```
 
 ## Setup

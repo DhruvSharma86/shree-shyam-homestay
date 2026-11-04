@@ -111,7 +111,7 @@ def register_error_handlers(app: FastAPI) -> None:
         )
 
 
-def _jsonable_errors(errors: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _jsonable_errors(errors: Any) -> list[dict[str, Any]]:
     """Strip non-serialisable values (e.g. ValueError instances) from errors."""
     cleaned: list[dict[str, Any]] = []
     for err in errors:

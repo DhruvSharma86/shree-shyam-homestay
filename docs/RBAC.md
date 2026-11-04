@@ -56,12 +56,18 @@ Receptionists can see bookings/guests **needed for operations** (today's arrival
 3. No role may access another booking's guest token or bypass token expiry.
 4. Admins cannot delete their own last active admin account (prevent lockout) — system MUST block deactivating the final active ADMIN.
 
-## 5. Session & account security
-- Argon2id/bcrypt password hashing; minimum password length policy (configurable, e.g. ≥ 10 chars).
-- Idle session timeout (configurable default 30 min) + absolute expiry (configurable default 12 h).
-- Inactive (`is_active = false`) users cannot log in; existing sessions revoked on deactivation.
-- Login attempts rate-limited; failed logins audit-logged.
+## 5. Session & account security — ✅ implemented (Phase 1.2)
+- **Argon2id** password hashing (`argon2-cffi`, pinned parameters); minimum password length **10** chars (`ChangePasswordRequest`, user creation, bootstrap).
+- Idle session timeout (configurable default **30 min**) + absolute expiry (configurable default **12 h**) — both computed in `get_session_user`; expired/idle sessions auto-revoked.
+- Inactive (`is_active = false`) users cannot log in; deactivation revokes live sessions (`revoke_user_sessions`).
+- Login attempts rate-limited (**10 failures / 5 min / username**, in-process, configurable); failed logins audit-logged (`AUTH_LOGIN_FAILED`, IP only — never credentials).
+- **CSRF:** double-submit cookie (`sshs_csrf` + `X-CSRF-Token` header, constant-time compare) required on all mutating endpoints.
+- **Session rotation on login:** pre-login session revoked before a new one is issued (fixation defence).
+- Cookies: `HttpOnly`, `SameSite=Lax`, `Secure` outside development, `Path=/`.
+- Password change revokes all other live sessions for the user; ADMIN reset likewise.
 - Password reset: admin-initiated only (no self-service email flow in v1 — no mail service in scope).
+- **No public registration** — accounts are created only via ADMIN endpoints or the one-time bootstrap command.
+- Unknown roles receive an **empty permission set** (default-deny); tested in `tests/test_permissions.py`.
 
 ## 6. Examples of enforcement checks
 | Endpoint | Required permission |

@@ -15,14 +15,18 @@ REST over HTTPS. JSON. Cookie-based session auth for staff; token-in-URL for gue
 - CSRF: required on all cookie-authenticated mutating requests (double-submit token).
 - Health: `GET /healthz` (liveness), `GET /readyz` (DB reachable).
 
-## 2. Authentication
+## 2. Authentication — ✅ implemented (Phase 1.2)
 | Endpoint | Method | Notes |
 |---|---|---|
-| `/api/v1/auth/login` | POST | `{username, password}` → sets session cookie; rate-limited |
-| `/api/v1/auth/logout` | POST | revokes server session |
-| `/api/v1/auth/me` | GET | current user (id, name, role, permissions) |
+| `/api/v1/auth/login` | POST | `{username, password}` → session + CSRF cookies; rate-limited (10 fails/5 min/username → 429); rotates pre-login session; generic `INVALID_CREDENTIALS` 401 |
+| `/api/v1/auth/logout` | POST | revokes server session + clears cookies; CSRF required (idempotent) |
+| `/api/v1/auth/me` | GET | current user `{user, permissions}`; 401 when unauthenticated |
+| `/api/v1/auth/change-password` | POST | `{current_password, new_password≥10}`; revokes other sessions; CSRF required |
+| `/api/v1/users` | GET / POST | list / create accounts (**`users.manage`, ADMIN only**); POST 201 |
+| `/api/v1/users/{id}` | GET / PATCH / DELETE | fetch / update (name, email, active) / deactivate (**`users.manage`**; last-active-ADMIN guard → 409) |
+| `/api/v1/users/{id}/reset-password` | POST | ADMIN-initiated reset (**`users.reset_credentials`**); revokes target sessions |
 
-Session cookie: `HttpOnly; Secure; SameSite=Lax; Path=/`. Idle + absolute expiry per RBAC doc.
+Session cookie: `HttpOnly; Secure (non-dev); SameSite=Lax; Path=/`. CSRF: double-submit (`sshs_csrf` cookie + `X-CSRF-Token` header) on all mutating endpoints. Error codes: `UNAUTHENTICATED` (401), `FORBIDDEN` (403), `CSRF_FAILED` (403), `INVALID_CREDENTIALS` (401), `RATE_LIMITED` (429). No public registration endpoint exists.
 
 ## 3. Endpoint catalogue
 

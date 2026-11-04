@@ -11,7 +11,10 @@ No business logic lives here; each capability is a router module.
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app import models as _models  # noqa: F401  (registers ORM models on Base.metadata)
 from app.api.health import router as health_router
+from app.auth.router import router as auth_router
+from app.auth.users_router import router as users_router
 from app.core.config import get_settings
 from app.core.errors import register_error_handlers
 from app.core.logging_config import configure_logging, get_logger
@@ -44,8 +47,9 @@ def create_app() -> FastAPI:
     # Health endpoints are intentionally outside /api/v1 (see health.py).
     app.include_router(health_router)
 
-    # Versioned API routers are added here in later phases, e.g.:
-    #   app.include_router(auth_router, prefix=settings.api_v1_prefix)
+    # Versioned API routers. Later phases add bookings/billing/etc. here.
+    app.include_router(auth_router, prefix=settings.api_v1_prefix)
+    app.include_router(users_router, prefix=settings.api_v1_prefix)
 
     logger.info(
         "Application initialised",

@@ -1,0 +1,81 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  lint-type-test:
+    name: Lint, typecheck, SQLite tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install backend (dev extras)
+        working-directory: backend
+        run: pip install -e ".[dev]"
+      - name: Lint (ruff)
+        working-directory: backend
+        run: ruff check .
+      - name: Typecheck (mypy)
+        working-directory: backend
+        run: mypy app
+      - name: Tests (SQLite)
+        working-directory: backend
+        run: pytest -q
+
+  postgres-integration:
+    name: Alembic migrations + PostgreSQL integration tests
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: hotel_app
+          POSTGRES_PASSWORD: ci-only-test-password
+          POSTGRES_DB: shree_shyam
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U hotel_app -d shree_shyam"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql+psycopg://hotel_app:ci-only-test-password@localhost:5432/shree_shyam
+      REQUIRE_POSTGRES: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install backend (dev extras)
+        working-directory: backend
+        run: pip install -e ".[dev]"
+      - name: Alembic upgrade head (clean PostgreSQL)
+        working-directory: backend
+        run: alembic upgrade head
+      - name: Verify migrated schema
+        working-directory: backend
+        run: |
+          python - <<'PY'
+          from sqlalchemy import inspect, text
+          from app.core.db import get_engine
+
+          inspector = inspect(get_engine())
+          tables = set(inspector.get_table_names())
+          missing = {"users", "sessions", "audit_log", "alembic_version"} - tables
+          assert not missing, f"missing tables: {missing}"
+          cols = {c["name"] for c in inspector.get_columns("users")}
+          needed = {"id", "username", "password_hash", "role", "is_active", "created_at", "updated_at"}
+          assert needed <= cols, f"users table incomplete: {needed - cols}"
+          with get_engine().connect() as conn:
+              assert conn.execute(text("SELECT 1")).scalar() == 1
+          print("schema OK:", sorted(tables))
+          PY
+      - name: PostgreSQL integration tests (must run — skips fail the build)
+        working-directory: backend
+        run: pytest -q -m postgres --run-postgres-check

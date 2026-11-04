@@ -15,10 +15,6 @@ def test_database_connection_check() -> None:
     assert check_database_connection() is True
 
 
-def test_base_metadata_is_empty_without_models() -> None:
-    """Phase 1.1 ships no ORM tables — metadata must be empty.
-
-    Guards against accidentally adding models in this milestone; real
-    tables arrive in Phase 1.2.
-    """
-    assert len(Base.metadata.tables) == 0
+def test_base_metadata_contains_auth_tables() -> None:
+    """Phase 1.2 registers users, sessions and audit_log on Base.metadata."""
+    assert set(Base.metadata.tables) == {"users", "sessions", "audit_log"}
