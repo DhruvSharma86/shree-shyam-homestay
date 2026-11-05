@@ -54,25 +54,26 @@ PostgreSQL. Money: `NUMERIC(12,2)`. All tables: `id UUID (pk, default gen_random
 | ip_address / user_agent | VARCHAR(45/512) | security review |
 | *(no separate `idle_expiry` column)* | | Idle expiry is computed: `last_seen_at + idle_timeout`, enforced in `app/auth/service.py::get_session_user` |
 
-### 2.3 `hotel_info` (singleton row — enforced by id check or unique `singleton_key`)
-`id`, `name` (default "Shree Shyam Home Stay"), `address_text`, `phone`, `email`, `website_url`, `maps_url`, `check_in_time`, `check_out_time`, `wifi_ssid`, `wifi_password`, timezone. **All values TBD/configurable — no invented data.**
+### 2.3 `hotel_info` — ✅ implemented (Phase 2.1, migration `c2d3e4f5a6b7`)
+Singleton row (`singleton_key = 1` UNIQUE). Fields: `id UUID PK`, `singleton_key INT UNIQUE`, `hotel_name VARCHAR(160)` (default "Shree Shyam Home Stay"), `description TEXT NULL`, `address TEXT NULL`, `city VARCHAR(120) NULL`, `state VARCHAR(120) NULL`, `pincode VARCHAR(16) NULL`, `contact_number VARCHAR(24) NULL`, `alternate_contact_number VARCHAR(24) NULL`, `email VARCHAR(255) NULL`, `google_maps_url VARCHAR(1024) NULL`, `website_url VARCHAR(1024) NULL`, `logo_url VARCHAR(1024) NULL`, `check_in_time/check_out_time VARCHAR(8) NULL`, `wifi_ssid VARCHAR(64) NULL`, `wifi_password VARCHAR(128) NULL`, `created_at/updated_at TIMESTAMPTZ`, `updated_by UUID NULL`. Row created on first ADMIN PATCH; updated thereafter. **All values TBD/configurable — none seeded.**
 
-### 2.4 `room_types`
-`id`, `code UNIQUE` ('NORMAL','DELUXE','SUPER_DELUXE'), `name`, `description`, `is_active`.
+### 2.4 `room_types` — ✅ implemented (Phase 2.1)
+`id UUID PK`, `name VARCHAR(64) UNIQUE INDEXED` (Normal / Deluxe / Super Deluxe — admin-configurable, no seeds), `description TEXT NULL`, `maximum_occupancy INT DEFAULT 2`, `amenities TEXT NULL`, `is_active BOOL DEFAULT TRUE`, `display_order INT DEFAULT 0`, `created_at/updated_at`. Categories referenced by rooms/bookings are **never deleted** — `is_active=false` only.
 
-### 2.5 `rooms`
-`id`, `room_number VARCHAR(16) UNIQUE` (e.g. "101"), `room_type_id FK`, `status ENUM('ACTIVE','OUT_OF_SERVICE')`, `max_occupancy INT`, `notes`.
+### 2.5 `rooms` — ✅ implemented (Phase 2.1)
+`id UUID PK`, `room_number VARCHAR(16) UNIQUE INDEXED` (assigned by ADMIN — **never invented**), `room_type_id FK → room_types RESTRICT INDEXED`, `floor INT NULL`, `description TEXT NULL`, `maximum_occupancy INT DEFAULT 2`, `operational_status VARCHAR(16)` ∈ {AVAILABLE, MAINTENANCE, INACTIVE} (validated at API layer; **operational state, NOT booking occupancy**), `is_active BOOL DEFAULT TRUE`, `created_at/updated_at`.
 
-### 2.6 `room_rates` (rate history — price changes create new rows)
-`id`, `room_type_id FK`, `nightly_price NUMERIC(12,2) NOT NULL`, `effective_from DATE`, `effective_to DATE NULL` (open-ended = current), `currency CHAR(3) DEFAULT 'INR'`, `created_by FK`, `created_at`.
-*Booking snapshots the rate at creation (see `bookings.rate_snapshot`).*
+### 2.6 `room_rates` — ✅ implemented (Phase 2.1, versioned/append-only)
+`id UUID PK`, `room_type_id FK → room_types RESTRICT INDEXED`, `nightly_rate NUMERIC(12,2) NOT NULL CHECK ≥ 0`, `valid_from DATE`, `valid_until DATE NULL CHECK ≥ valid_from`, `is_active BOOL DEFAULT TRUE`, `created_by UUID NULL`, `created_at`. Price changes create **new rows**; old rows untouched. Overlap prevention: application-level check within the creation transaction (see §2.10 pattern). *Booking snapshots the rate at creation (Phase 3).*
 
-### 2.7 `tax_settings` (versioned or singleton — versioned recommended for audit)
-`id`, `is_gst_registered BOOL` (TBD — **never assume**), `gst_number VARCHAR(32) NULL`, `tax_mode ENUM('NONE','EXCLUSIVE','INCLUSIVE')`, `gst_rate_percent NUMERIC(5,2) NULL`, `effective_from/to`, `created_by`, `created_at`.
-*No default rate is seeded. If not GST-registered, `tax_mode='NONE'`.*
+### 2.7 `tax_settings` — ✅ implemented (Phase 2.1, versioned/append-only)
+`id UUID PK`, `registration_status VARCHAR(16) DEFAULT 'NONE'`, `tax_type VARCHAR(16) DEFAULT 'NONE'`, `tax_rate NUMERIC(5,2) NULL CHECK ≥ 0` (required when tax_type ≠ NONE), `pricing_mode VARCHAR(16) DEFAULT 'EXCLUSIVE'` ∈ {INCLUSIVE, EXCLUSIVE}, `valid_from DATE`, `valid_until DATE NULL`, `notes TEXT NULL`, `created_by UUID NULL`, `created_at`. **Default = NONE; no GST registration or rate is assumed or seeded.** Overlap prevention same as room_rates. *Invoice/tax calculations belong to Phase 4.*
 
-### 2.8 `restaurant_info` / `cab_info`
-`id`, plus restaurant: `menu_text`/`menu_items JSONB`, `photos JSONB` (URLs/keys), `contact_name`, `contact_phone`, `timings`; cab: `company_name`, `contact_phone`, `website_url`, `notes`. All TBD.
+### 2.8 `restaurant_info` / `cab_info` — ✅ implemented (Phase 2.1)
+**restaurant_info** (singleton like hotel_info): `id`, `singleton_key UNIQUE`, `name VARCHAR(160)`, `description TEXT NULL`, `contact_number VARCHAR(24) NULL`, `opening_hours VARCHAR(256) NULL`, `is_active`, timestamps, `updated_by`.
+**menu_categories**: `id`, `name VARCHAR(120) UNIQUE INDEXED`, `description TEXT NULL`, `display_order INT`, `is_active`, timestamps.
+**menu_items**: `id`, `name VARCHAR(160)`, `description TEXT NULL`, `price NUMERIC(12,2) CHECK ≥ 0`, `image_url VARCHAR(1024) NULL` (**URL only — no binaries in PostgreSQL**), `category_id FK → menu_categories RESTRICT INDEXED`, `is_vegetarian BOOL DEFAULT TRUE`, `is_available BOOL DEFAULT TRUE`, `display_order INT`, timestamps.
+**cab_info**: `id`, `company_name VARCHAR(160) INDEXED`, `description TEXT NULL`, `contact_number VARCHAR(24) NOT NULL`, `website_url VARCHAR(1024) NULL` (validated HttpUrl), `service_description TEXT NULL`, `is_active`, `display_order INT`, timestamps. Multiple providers allowed; no booking integration.
 
 ### 2.9 `guests`
 `id`, `full_name VARCHAR(160)`, `phone VARCHAR(24)` (normalized), `email NULL`, `id_proof_type NULL` (e.g. Aadhaar/Passport — values TBD), `id_proof_number NULL` (stored minimally; consider encryption at rest — see security risks in SRS handoff), `address NULL`, `notes NULL`, `created_at/updated_at`.

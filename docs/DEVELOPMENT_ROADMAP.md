@@ -27,10 +27,13 @@
 - **Exit criteria met (locally):** admin can log in; RBAC denies by default; tests green; migration runs clean on SQLite. ⚠️ **PostgreSQL verification requires the first CI run** (no Docker/PostgreSQL on this dev machine).
 
 ## Phase 2 — Hotel configuration & users management
-- `hotel_info`, `room_types`, `rooms`, `room_rates` (versioned), `tax_settings` (versioned, default NONE), `restaurant_info`, `cab_info`
-- Admin UI: user management, room/type/price config, hotel info, content config
-- Audit logs for all admin config changes
-- **Exit criteria:** ADMIN can configure everything without code changes/DB edits; receptionist blocked from all config routes.
+### Phase 2.1 — Hotel configuration & room management ✅ (complete, 2026-11-05)
+- [x] Models: `hotel_info` (singleton), `room_types`, `rooms`, `room_rates` (versioned append-only), `tax_settings` (versioned, default NONE), `restaurant_info`, `menu_categories`, `menu_items`, `cab_info` — migration `c2d3e4f5a6b7`
+- [x] Admin APIs: `/api/v1/admin/hotel|room-types|rooms|room-rates|tax-settings|restaurant|menu-categories|menu-items|cab-providers` (ADMIN-only RBAC, CSRF, audit on every mutation)
+- [x] 91 tests passing locally (SQLite); Alembic upgrade/downgrade clean on persistent SQLite; PostgreSQL verification via GitHub Actions
+- [ ] Admin UI for room/type/price config, hotel info, content config (frontend phase)
+- **Exit criteria met (backend):** ADMIN can configure everything without code changes/DB edits; receptionist blocked (403) from all config routes; unauthenticated blocked (401). Room numbers, prices, GST rates, contacts remain unseeded/configurable — none invented.
+- Next: Phase 2.2 (to be defined) — do not start automatically.
 
 ## Phase 3 — Guests & bookings
 - Guest registration + phone lookup; booking CRUD, availability engine, overlap prevention (app + DB), rate snapshots

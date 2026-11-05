@@ -16,5 +16,18 @@ def test_database_connection_check() -> None:
 
 
 def test_base_metadata_contains_auth_tables() -> None:
-    """Phase 1.2 registers users, sessions and audit_log on Base.metadata."""
-    assert set(Base.metadata.tables) == {"users", "sessions", "audit_log"}
+    """Phase 1.2 + 2.1 registers auth and hotel configuration tables."""
+    assert set(Base.metadata.tables) == {
+        "users",
+        "sessions",
+        "audit_log",
+        "hotel_info",
+        "room_types",
+        "rooms",
+        "room_rates",
+        "tax_settings",
+        "restaurant_info",
+        "menu_categories",
+        "menu_items",
+        "cab_info",
+    }

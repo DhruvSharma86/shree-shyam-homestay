@@ -41,14 +41,23 @@ Session cookie: `HttpOnly; Secure (non-dev); SameSite=Lax; Path=/`. CSRF: double
 ### 3.2 Hotel, rooms, pricing, tax, content (ADMIN: respective `*.manage`)
 | Endpoint | Method | Permission |
 |---|---|---|
-| `/hotel` | GET, PATCH | `hotel.manage` |
-| `/room-types` | GET, POST, PATCH | `rooms.manage` |
-| `/rooms` | GET, POST, PATCH | `rooms.manage` |
-| `/rooms/{id}/rates` | GET, POST (new rate version) | `pricing.manage` |
-| `/tax-settings` | GET, POST (new version) | `tax.manage` |
-| `/content/restaurant` | GET, PATCH | `content.manage` |
-| `/content/cab` | GET, PATCH | `content.manage` |
-| `/content/public/{page}` | GET, PATCH | `content.manage` |
+| `/admin/hotel` | GET, PATCH | `hotel.manage` |
+| `/admin/room-types` | GET, POST | `rooms.manage` |
+| `/admin/room-types/{id}` | GET, PATCH | `rooms.manage` (deactivation via `is_active=false`) |
+| `/admin/rooms` | GET (paginated), POST | `rooms.manage` |
+| `/admin/rooms/{id}` | GET, PATCH | `rooms.manage` (`operational_status` ∈ AVAILABLE/MAINTENANCE/INACTIVE) |
+| `/admin/room-rates` | GET, POST | `pricing.manage` (append-only versions; overlaps → 409) |
+| `/admin/room-rates/{id}` | GET | `pricing.manage` |
+| `/admin/tax-settings` | GET, POST | `tax.manage` (append-only versions; default NONE = empty list) |
+| `/admin/restaurant` | GET, PATCH | `content.manage` |
+| `/admin/menu-categories` | GET, POST | `content.manage` |
+| `/admin/menu-categories/{id}` | PATCH | `content.manage` |
+| `/admin/menu-items` | GET (paginated, `?category_id=`), POST | `content.manage` |
+| `/admin/menu-items/{id}` | PATCH | `content.manage` |
+| `/admin/cab-providers` | GET, POST | `content.manage` |
+| `/admin/cab-providers/{id}` | PATCH | `content.manage` |
+
+Public/guest-portal read endpoints for the above are deferred (Phases 5–6). `wifi_password` is write-only in the PATCH body and never echoed in responses.
 
 ### 3.3 Guests (`guests.read` / `guests.write`)
 | Endpoint | Method | Notes |

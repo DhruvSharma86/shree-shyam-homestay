@@ -18,6 +18,8 @@ from app.auth.users_router import router as users_router
 from app.core.config import get_settings
 from app.core.errors import register_error_handlers
 from app.core.logging_config import configure_logging, get_logger
+from app.hotel.restaurant_router import router as restaurant_router
+from app.hotel.router import router as hotel_router
 
 
 def create_app() -> FastAPI:
@@ -50,6 +52,8 @@ def create_app() -> FastAPI:
     # Versioned API routers. Later phases add bookings/billing/etc. here.
     app.include_router(auth_router, prefix=settings.api_v1_prefix)
     app.include_router(users_router, prefix=settings.api_v1_prefix)
+    app.include_router(hotel_router, prefix=settings.api_v1_prefix)
+    app.include_router(restaurant_router, prefix=settings.api_v1_prefix)
 
     logger.info(
         "Application initialised",

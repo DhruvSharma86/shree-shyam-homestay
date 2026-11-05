@@ -47,6 +47,9 @@ portal.tokens.manage
 
 Each endpoint declares the permission it needs; a `require_permission(...)` dependency enforces it. Missing permission → `403` with a standard error envelope.
 
+### Phase 2.1 enforcement (implemented 2026-11-05)
+All `/api/v1/admin/{hotel,room-types,rooms,room-rates,tax-settings,restaurant,menu-categories,menu-items,cab-providers}` endpoints require the mapped permission above (ADMIN only). RECEPTIONIST receives 403; unauthenticated receives 401. Public/guest-portal reads are deferred (Phases 5–6). Every mutation writes an audit record (`HOTEL_INFO_UPDATED`, `ROOM_TYPE_CREATED/UPDATED`, `ROOM_CREATED/UPDATED`, `RATE_CREATED`, `TAX_SETTINGS_CREATED`, `RESTAURANT_INFO_UPDATED`, `MENU_CATEGORY_CREATED/UPDATED`, `MENU_ITEM_CREATED/UPDATED`, `CAB_PROVIDER_CREATED/UPDATED`).
+
 ## 3. Receptionist operational subset
 Receptionists can see bookings/guests **needed for operations** (today's arrivals, current stays, booking search by name/phone/ref). They see folio & payment details **for the booking they are handling** (required to record payments and print receipts) but **cannot** access aggregate financial reports, revenue summaries, or audit logs.
 
