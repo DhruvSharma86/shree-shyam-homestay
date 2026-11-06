@@ -2,8 +2,8 @@
 
 A lightweight, secure, and maintainable management system for a small homestay with **6 rooms**.
 
-> **Status:** Documentation / Architecture phase. **No application code has been written yet.**
-> Do not begin Phase 1 implementation until the documents in `docs/` are reviewed and approved.
+> **Status:** Phase 2.2 complete — backend (Phases 1.1–2.1, verified) + Admin Dashboard frontend (Phase 2.2, verified).
+> Backend: FastAPI + PostgreSQL; Frontend: Next.js (TypeScript/Tailwind) in `frontend/` — see `frontend/README.md` for setup.
 
 ---
 
@@ -53,8 +53,8 @@ This is **not** an enterprise PMS. No microservices, no overengineering. A modul
 ├── backend/            # FastAPI modular monolith (Phase 1+)
 │   ├── app/
 │   └── alembic/
-├── frontend/           # Next.js app (later phase)
-└── docker-compose.yml  # Postgres + backend + frontend for local dev
+├── frontend/           # Next.js admin (Phase 2.2; Receptionist dashboard later)
+└── docker-compose.yml  # Postgres for backend; frontend runs via npm
 ```
 
 ## 4. Documentation index

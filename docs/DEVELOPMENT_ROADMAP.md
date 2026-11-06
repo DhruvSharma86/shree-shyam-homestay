@@ -1,7 +1,7 @@
 # Development Roadmap — Shree Shyam Home Stay
 
-> **Current status: Phase 1.2 (auth, users, RBAC) — ✅ complete.**
-> Phase 1.1 delivered (config, DB infra, logging, error envelope, health endpoints, pytest harness, Alembic, docker-compose Postgres). Phase 1.2 delivered: `users`/`sessions`/`audit_log` models, Argon2id session-cookie auth (login/logout/me/change-password), default-deny RBAC (ADMIN/RECEPTIONIST), user management endpoints, one-time initial ADMIN bootstrap, first Alembic migration (`bb79107c6b65`), GitHub Actions CI with PostgreSQL integration tests. 53 tests passing locally (SQLite); PostgreSQL job pending first CI run — **not yet verified against real PostgreSQL**.
+> **Current status: Phase 2.2 (Admin Dashboard & frontend) — ✅ complete.**
+> Phases 1.1–1.2 (foundation, auth/RBAC) and 2.1 (hotel config backend) delivered and verified. Phase 2.2 delivered: Next.js Admin Dashboard (login, dashboard, hotel, room-types, rooms, room-rates, tax-settings, restaurant, menu, cab-providers, users, audit-logs pending) — 9 frontend tests passing, typecheck/lint/build clean, backend 91 tests passing. Full details in `frontend/README.md`.
 
 ## Phase 0 — Documentation & design ✅ (this milestone)
 - [x] README, SRS, Architecture, Database, RBAC, Booking/Billing workflows, Guest portal, API design, Roadmap
@@ -31,9 +31,15 @@
 - [x] Models: `hotel_info` (singleton), `room_types`, `rooms`, `room_rates` (versioned append-only), `tax_settings` (versioned, default NONE), `restaurant_info`, `menu_categories`, `menu_items`, `cab_info` — migration `c2d3e4f5a6b7`
 - [x] Admin APIs: `/api/v1/admin/hotel|room-types|rooms|room-rates|tax-settings|restaurant|menu-categories|menu-items|cab-providers` (ADMIN-only RBAC, CSRF, audit on every mutation)
 - [x] 91 tests passing locally (SQLite); Alembic upgrade/downgrade clean on persistent SQLite; PostgreSQL verification via GitHub Actions
-- [ ] Admin UI for room/type/price config, hotel info, content config (frontend phase)
 - **Exit criteria met (backend):** ADMIN can configure everything without code changes/DB edits; receptionist blocked (403) from all config routes; unauthenticated blocked (401). Room numbers, prices, GST rates, contacts remain unseeded/configurable — none invented.
-- Next: Phase 2.2 (to be defined) — do not start automatically.
+
+### Phase 2.2 — Admin Dashboard & frontend ✅ (complete, 2026-11-06)
+- [x] Next.js 16 (TypeScript/Tailwind) frontend under `frontend/`; `/login` + 11 admin routes (`/admin/dashboard|hotel|room-types|rooms|room-rates|tax-settings|restaurant|menu|cab-providers|users|audit-logs`)
+- [x] Session-cookie auth (no localStorage), CSRF header interceptor, `RequireAdmin` session restoration + role restriction (receptionists blocked, backend authoritative)
+- [x] All Phase 2.1 APIs integrated (hotel, room types, rooms, rates, tax, restaurant/menu, cab, users); audit-logs correctly labelled pending (no read API exists)
+- [x] Vitest: 9 tests passing; `tsc --noEmit`, ESLint and `next build` all clean; sidebar + responsive tables for desktop/mobile
+- **Exit criteria met:** Admin can manage all hotel configuration without DB/code; no invented metrics/prices/GST/rooms. Unit tests only — no Playwright E2E yet.
+- Next: Phase 3 (guests & bookings, backend) — do not start automatically.
 
 ## Phase 3 — Guests & bookings
 - Guest registration + phone lookup; booking CRUD, availability engine, overlap prevention (app + DB), rate snapshots

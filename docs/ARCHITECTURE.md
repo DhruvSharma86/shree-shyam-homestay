@@ -66,17 +66,24 @@ backend/app/
 - Routes are thin: validate (Pydantic) → authorize (RBAC) → call service → serialize.
 - Financial logic lives only in `billing` service functions; no other module writes financial tables.
 
-## 5. Frontend structure (Next.js, later phase)
+## 5. Frontend structure (Next.js — Phase 2.2 implemented)
 
 ```
-frontend/
-├── src/app/
-│   ├── (public)/         # Marketing site: home, about, rooms, gallery, ...
-│   ├── (admin)/          # Staff dashboard (ADMIN + RECEPTIONIST, RBAC-gated nav)
-│   └── guest/[token]/    # Guest portal (token in URL)
-├── components/ui/        # shadcn/ui components
-└── lib/api.ts            # Typed API client (cookies, credentials: 'include')
+frontend/src/
+├── app/
+│   ├── login/page.tsx            # Staff sign-in
+│   └── admin/                    # RequireAdmin + AdminShell (all Server→Client boundary pages)
+│       ├── dashboard|hotel|room-types|rooms|room-rates|tax-settings/
+│       │   restaurant|menu|cab-providers|users|audit-logs/
+├── components/                   # AdminShell, RequireAdmin, ui/primitives (shadcn-style)
+├── lib/api.ts                    # Axios + withCredentials + CSRF header interceptor
+├── services/{auth,hotel}.ts      # API only — no UI
+├── schemas/                      # Zod (mirrors backend Pydantic, never business logic)
+├── stores/auth.ts                # Zustand: current user + permissions only
+└── types/                        # API response types
 ```
+
+Auth: HttpOnly session cookie (no localStorage), CSRF via `X-CSRF-Token` from cookie, session restored via `GET /auth/me`. Dashboard shows only configured counts — no occupancy/revenue/guest metrics (those systems do not exist yet). Receptionist dashboard, guest portal and public site are explicitly later phases.
 
 ## 6. Data & persistence
 - PostgreSQL via SQLAlchemy 2.0 (async or sync — sync is fine at this scale; decide in Phase 1 and keep consistent).

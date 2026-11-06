@@ -1,4 +1,5 @@
 'use client';
+import Image from 'next/image';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -74,7 +75,7 @@ export default function MenuPage() {
         <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
           {(items.data ?? []).map((it) => (
             <Card key={it.id}>
-              {it.image_url ? <img src={it.image_url} alt={it.name} className="mb-2 h-32 w-full rounded-md object-cover" /> : null}
+              {it.image_url ? <Image src={it.image_url} alt={it.name} width={400} height={160} unoptimized className="mb-2 h-32 w-full rounded-md object-cover" /> : null}
               <p className="font-medium">{it.name}</p>
               <p className="text-sm text-stone-500">{catName(it.category_id)} · ₹{it.price} · {it.is_vegetarian ? 'Veg' : 'Non-veg'}</p>
               <Button className="mt-2" onClick={() => toggleItem.mutate({ id: it.id, is_available: !it.is_available })}>{it.is_available ? 'Mark unavailable' : 'Mark available'}</Button>
