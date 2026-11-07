@@ -68,12 +68,14 @@ Modular monolith backend (FastAPI) + separate Next.js frontend, PostgreSQL datab
 | FR-CFG-04 | ADMIN MUST be able to manage restaurant info (menu, photos, contact) and cab info (company, external website), and system settings including tax/GST config. |
 | FR-CFG-05 | Changes to pricing/tax settings SHOULD be audit-logged with before/after values. |
 
-### 3.3 Guest management
+### 3.3 Guest management — ✅ implemented Phase 3.1 except Aadhaar (deferred)
 | ID | Requirement |
 |---|---|
-| FR-GST-01 | Receptionists MUST be able to register guests (name, phone, ID details as available, address optional). |
-| FR-GST-02 | Each booking has exactly one primary guest; the system SHOULD support lookup of a returning guest by phone number to avoid duplicates. |
-| FR-GST-03 | Guest records MUST NOT be hard-deleted if they have bookings (retain for financial/audit integrity). |
+| FR-GST-01 | Receptionists MUST be able to register guests (name, phone, ID details as available, address optional). **Done for name/phone/address/email**; ID details/Aadhaar image **deferred** (see below). |
+| FR-GST-02 | Each booking has exactly one primary guest; the system SHOULD support lookup of a returning guest by phone number to avoid duplicates. **Done**: `GET /api/v1/guests?q=` (name/email/phone) + duplicate rule (active phone + normalized name → 409). |
+| FR-GST-03 | Guest records MUST NOT be hard-deleted if they have bookings (retain for financial/audit integrity). **Done**: soft-deactivation only (`POST /{id}/deactivate`); no DELETE endpoint. |
+
+**Aadhaar/document deferral (Phase 3.1 decision):** SRS FR-GST-01 mentions "ID details as available" and the business brief mentions an Aadhaar photograph, but no compliant, approved design exists for collecting/retaining Aadhaar data under the Aadhaar Act, 2016 and IT Act (private encrypted storage, consent, access controls, retention/purge, breach handling). Collecting full Aadhaar images/numbers without that design would be unlawful risk, so Phase 3.1 stores **no** Aadhaar image, number, or ID-proof type/number. A separate, legally reviewed document-handling milestone is required before any collection. DATABASE_DESIGN §2.9 records this explicitly.
 
 ### 3.4 Booking
 | ID | Requirement |

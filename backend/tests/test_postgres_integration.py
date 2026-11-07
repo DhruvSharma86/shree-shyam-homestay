@@ -58,13 +58,27 @@ def pg_client():
 
 
 def test_postgres_schema_contains_auth_tables() -> None:
-    """PostgreSQL has users, sessions, audit_log with expected columns."""
+    """PostgreSQL has users, sessions, audit_log, guests + expected columns."""
     inspector = inspect(get_engine())
     tables = set(inspector.get_table_names())
-    assert {"users", "sessions", "audit_log"} <= tables
+    assert {"users", "sessions", "audit_log", "guests"} <= tables
 
     user_columns = {c["name"] for c in inspector.get_columns("users")}
     assert {"id", "username", "password_hash", "role", "is_active", "created_at"} <= user_columns
+
+    guest_columns = {c["name"] for c in inspector.get_columns("guests")}
+    assert {
+        "id",
+        "full_name",
+        "phone",
+        "is_active",
+        "created_by",
+        "created_at",
+        "updated_at",
+    } <= guest_columns
+
+    indexes = {ix["name"] for ix in inspector.get_indexes("guests")}
+    assert "ix_guests_phone_name_active" in indexes
 
 
 def test_postgres_full_auth_flow(pg_client) -> None:
@@ -118,3 +132,42 @@ def test_postgres_full_auth_flow(pg_client) -> None:
     out = pg_client.post("/api/v1/auth/logout", headers=csrf_headers(pg_client))
     assert out.status_code == 200
     assert pg_client.get("/api/v1/auth/me").status_code == 401
+
+
+def test_postgres_guest_flow(pg_client) -> None:
+    """Guest registration + duplicate guard work on PostgreSQL."""
+    from app.core.db import get_session_factory
+    from app.models.user import UserRole
+    from tests.factories import (
+        ADMIN_PASSWORD,
+        create_user,
+        csrf_headers,
+        login,
+    )
+
+    db = get_session_factory()()
+    try:
+        # Clean prior run data if any (module reuses tables).
+        from sqlalchemy import text as _t
+
+        db.execute(_t("DELETE FROM guests"))
+        db.execute(_t("DELETE FROM users WHERE username = 'pgguestadmin'"))
+        create_user(db, username="pgguestadmin", password=ADMIN_PASSWORD, role=UserRole.ADMIN.value)
+        db.commit()
+    finally:
+        db.close()
+
+    assert login(pg_client, "pgguestadmin", ADMIN_PASSWORD).status_code == 200
+    headers = csrf_headers(pg_client)
+    created = pg_client.post(
+        "/api/v1/guests", json={"full_name": "Pg Guest", "phone": "9876500099"}, headers=headers
+    )
+    assert created.status_code == 201, created.text
+    assert created.json()["phone"] == "+919876500099"
+    dup = pg_client.post(
+        "/api/v1/guests", json={"full_name": "pg guest", "phone": "+919876500099"}, headers=headers
+    )
+    assert dup.status_code == 409
+    listed = pg_client.get("/api/v1/guests?q=pg+guest")
+    assert listed.status_code == 200
+    assert listed.json()["total"] == 1

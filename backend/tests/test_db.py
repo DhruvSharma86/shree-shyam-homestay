@@ -16,7 +16,7 @@ def test_database_connection_check() -> None:
 
 
 def test_base_metadata_contains_auth_tables() -> None:
-    """Phase 1.2 + 2.1 registers auth and hotel configuration tables."""
+    """Phase 1.2 + 2.1 + 3.1 registers auth, hotel and guest tables."""
     assert set(Base.metadata.tables) == {
         "users",
         "sessions",
@@ -30,4 +30,5 @@ def test_base_metadata_contains_auth_tables() -> None:
         "menu_categories",
         "menu_items",
         "cab_info",
+        "guests",
     }

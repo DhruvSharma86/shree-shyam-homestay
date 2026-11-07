@@ -67,11 +67,15 @@ jobs:
 
           inspector = inspect(get_engine())
           tables = set(inspector.get_table_names())
-          missing = {"users", "sessions", "audit_log", "alembic_version"} - tables
+          missing = {"users", "sessions", "audit_log", "guests", "alembic_version"} - tables
           assert not missing, f"missing tables: {missing}"
           cols = {c["name"] for c in inspector.get_columns("users")}
           needed = {"id", "username", "password_hash", "role", "is_active", "created_at", "updated_at"}
           assert needed <= cols, f"users table incomplete: {needed - cols}"
+          gcols = {c["name"] for c in inspector.get_columns("guests")}
+          gneeded = {"id", "full_name", "phone", "is_active", "created_at", "updated_at"}
+          assert gneeded <= gcols, f"guests table incomplete: {gneeded - gcols}"
+          assert "ix_guests_phone_name_active" in {i["name"] for i in inspector.get_indexes("guests")}
           with get_engine().connect() as conn:
               assert conn.execute(text("SELECT 1")).scalar() == 1
           print("schema OK:", sorted(tables))

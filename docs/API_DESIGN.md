@@ -59,11 +59,15 @@ Session cookie: `HttpOnly; Secure (non-dev); SameSite=Lax; Path=/`. CSRF: double
 
 Public/guest-portal read endpoints for the above are deferred (Phases 5–6). `wifi_password` is write-only in the PATCH body and never echoed in responses.
 
-### 3.3 Guests (`guests.read` / `guests.write`)
+### 3.3 Guests (`guests.read` / `guests.write`) — ✅ implemented (Phase 3.1)
 | Endpoint | Method | Notes |
 |---|---|---|
-| `/guests` | GET (search `?q=`), POST | phone-normalised lookup |
-| `/guests/{id}` | GET, PATCH | booking history embedded or via `/guests/{id}/bookings` |
+| `/guests` | GET, POST | GET: `?q=` searches name/email/phone, `?page=&page_size=`, `?include_inactive=`; sorted `created_at` desc; POST: phone normalized to E.164 |
+| `/guests/{id}` | GET, PATCH | PATCH covers `full_name, phone, email, address, notes` only; `is_active` rejected (422) |
+| `/guests/{id}/deactivate` | POST | Soft-deactivation, idempotent; audit `GUEST_DEACTIVATED` |
+| `/guests/{id}/bookings` | GET | Deferred — bookings do not exist yet (Phase 3.2) |
+
+Duplicate rule: exact normalized phone + case-insensitive whitespace-collapsed name on an **active** guest → `409 CONFLICT` with `details.existing_guest_id` (no silent merge). Same phone + different name allowed. Deactivated records never block re-registration. Invalid phone → `422 VALIDATION_ERROR`. Mutations require CSRF and write audit rows (`GUEST_CREATED/UPDATED/DEACTIVATED`) without PII in metadata.
 
 ### 3.4 Bookings & availability (`bookings.*`)
 | Endpoint | Method | Notes |

@@ -4,6 +4,7 @@
 
 from app.models.audit import AuditLog
 from app.models.cab_info import CabInfo
+from app.models.guest import Guest
 from app.models.hotel_info import HotelInfo
 from app.models.restaurant import MenuCategory, MenuItem, RestaurantInfo
 from app.models.room import Room
@@ -16,6 +17,7 @@ from app.models.user import User
 __all__ = [
     "AuditLog",
     "CabInfo",
+    "Guest",
     "HotelInfo",
     "MenuCategory",
     "MenuItem",

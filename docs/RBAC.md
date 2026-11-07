@@ -72,6 +72,9 @@ Receptionists can see bookings/guests **needed for operations** (today's arrival
 - **No public registration** — accounts are created only via ADMIN endpoints or the one-time bootstrap command.
 - Unknown roles receive an **empty permission set** (default-deny); tested in `tests/test_permissions.py`.
 
+### Phase 3.1 guest enforcement (implemented 2026-11-07)
+`/api/v1/guests` READ endpoints require `guests.read`; mutating endpoints (`POST`, `PATCH`, `POST /{id}/deactivate`) require `guests.write` + CSRF. Both ADMIN and RECEPTIONIST hold these permissions (operational workflow). Default-deny preserved: unauthenticated → 401. Audit: `GUEST_CREATED`, `GUEST_UPDATED`, `GUEST_DEACTIVATED` appended in the mutation transaction; metadata contains field names and ids only (no names/phones/emails/addresses/notes). Aadhaar/ID documents are not collected in Phase 3.1 (see DATABASE_DESIGN §2.9).
+
 ## 6. Examples of enforcement checks
 | Endpoint | Required permission |
 |---|---|
@@ -80,3 +83,5 @@ Receptionists can see bookings/guests **needed for operations** (today's arrival
 | `GET /api/reports/financial` | `reports.financial.read` (ADMIN only) |
 | `POST /api/users` | `users.manage` (ADMIN only) |
 | `POST /api/bookings/{id}/discounts` | `billing.discounts.write` (+ amount ≤ limit for RECEPTIONIST) |
+| `POST /api/v1/guests` | `guests.write` (both roles) |
+| `GET /api/v1/guests?q=...` | `guests.read` (both roles) |

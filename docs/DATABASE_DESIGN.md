@@ -75,9 +75,10 @@ Singleton row (`singleton_key = 1` UNIQUE). Fields: `id UUID PK`, `singleton_key
 **menu_items**: `id`, `name VARCHAR(160)`, `description TEXT NULL`, `price NUMERIC(12,2) CHECK ≥ 0`, `image_url VARCHAR(1024) NULL` (**URL only — no binaries in PostgreSQL**), `category_id FK → menu_categories RESTRICT INDEXED`, `is_vegetarian BOOL DEFAULT TRUE`, `is_available BOOL DEFAULT TRUE`, `display_order INT`, timestamps.
 **cab_info**: `id`, `company_name VARCHAR(160) INDEXED`, `description TEXT NULL`, `contact_number VARCHAR(24) NOT NULL`, `website_url VARCHAR(1024) NULL` (validated HttpUrl), `service_description TEXT NULL`, `is_active`, `display_order INT`, timestamps. Multiple providers allowed; no booking integration.
 
-### 2.9 `guests`
-`id`, `full_name VARCHAR(160)`, `phone VARCHAR(24)` (normalized), `email NULL`, `id_proof_type NULL` (e.g. Aadhaar/Passport — values TBD), `id_proof_number NULL` (stored minimally; consider encryption at rest — see security risks in SRS handoff), `address NULL`, `notes NULL`, `created_at/updated_at`.
-*Index on `phone` for returning-guest lookup. No hard delete if bookings exist.*
+### 2.9 `guests` — ✅ implemented (Phase 3.1, migration `d4e5f6a7b8c9`)
+`id UUID PK`, `full_name VARCHAR(160) INDEXED` (stored whitespace-collapsed), `phone VARCHAR(24) INDEXED` (stored **E.164 normalized**), `email VARCHAR(255) NULL INDEXED`, `address TEXT NULL`, `notes TEXT NULL`, `is_active BOOL DEFAULT TRUE INDEXED`, `created_at/updated_at TIMESTAMPTZ`, `created_by/updated_by UUID NULL`.
+Duplicate rule: one **active** guest per `(phone, lower(trim(full_name)))` — enforced by service check + partial unique expression index `ix_guests_phone_name_active (phone, lower(trim(full_name))) WHERE is_active` (PostgreSQL `is_active = TRUE`, SQLite `is_active = 1`). Same phone + different name allowed; exact match → `409` with `existing_guest_id`. Deactivated guests never block re-registration. Soft-deactivation only; never hard-deleted.
+**Aadhaar deferred (not in Phase 3.1):** no image, number, or `id_proof_type/number` columns exist. Full ID-proof handling requires legal review, private encrypted storage, access control and retention rules — a separate approved milestone. `id_proof_type/number` are therefore **not** collected. See SRS §3.3 note.
 
 ### 2.10 `bookings` (core)
 | Field | Type | Notes |

@@ -41,10 +41,16 @@
 - **Exit criteria met:** Admin can manage all hotel configuration without DB/code; no invented metrics/prices/GST/rooms. Unit tests only — no Playwright E2E yet.
 - Next: Phase 3 (guests & bookings, backend) — do not start automatically.
 
-## Phase 3 — Guests & bookings
-- Guest registration + phone lookup; booking CRUD, availability engine, overlap prevention (app + DB), rate snapshots
-- Booking lifecycle (confirm/check-in/checkout/cancel/no-show), booking history/search
-- **Exit criteria:** full booking lifecycle works; concurrency test proves no double-booking.
+### Phase 3 — Guests & bookings
+#### Phase 3.1 — Guest registration & guest records ✅ (complete, 2026-11-07)
+- [x] `guests` model (E.164 phone, whitespace-collapsed name, partial unique index on active phone+name), migration `d4e5f6a7b8c9`
+- [x] APIs: `POST/GET /api/v1/guests`, `GET/PATCH /api/v1/guests/{id}`, `POST /api/v1/guests/{id}/deactivate` (both roles via `guests.read/write`, CSRF, audit `GUEST_CREATED/UPDATED/DEACTIVATED` without PII)
+- [x] Search (`?q=` name/email/phone, pagination + total, `include_inactive`), duplicate rule (active phone+name → 409), re-registration after deactivation allowed
+- [x] Aadhaar/document handling **explicitly deferred** (no image/number stored; legal/encryption/retention design still required)
+- [x] **125 tests passing, 3 skipped** (SQLite); Alembic upgrade/downgrade clean on persistent SQLite; PostgreSQL integration tests exist and run in CI (fail-if-skip guard) — awaiting first CI run
+- **Exit criteria met:** register, retrieve, search, update, deactivate with audit; no booking/billing/portal/frontend changes.
+- Next: Phase 3.2 (bookings) — do not start automatically.
+- Remaining in Phase 3: booking CRUD, availability, overlap prevention, rate snapshots, lifecycle.
 
 ## Phase 4 — Billing, payments, receipts
 - Folio engine (charges, discounts with limits, reversals), payments (advance/check-in/checkout, cash/UPI/card), transactions
