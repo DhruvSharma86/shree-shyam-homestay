@@ -52,6 +52,20 @@ class Settings(BaseSettings):
     login_rate_limit_attempts: int = 10
     login_rate_limit_window_seconds: int = 300
 
+    # --- Guest portal rate limiting (Priority 3 audit) ----------------------
+    # Per-IP failed-portal-access budget. A per-token key is useless here:
+    # every guessed token is a fresh key, so the limiter must be keyed by
+    # client IP (shared NAT users share the budget — intentional DoS brake).
+    portal_rate_limit_attempts: int = 60
+    portal_rate_limit_window_seconds: int = 300
+
+    # --- Trusted proxy -------------------------------------------------------
+    # When True, `X-Forwarded-For` is honoured for client-IP resolution
+    # (rate-limit keys + audit IPs). Only enable behind a reverse proxy that
+    # strips/spoof-proofs XFF; otherwise IPs are client-controlled. Default
+    # False = use the direct peer only.
+    trusted_proxy_enabled: bool = False
+
     # --- Initial admin bootstrap (Phase 1.2) -----------------------------
     # Used only to create the first ADMIN account when the users table is
     # empty. Empty = no bootstrap. Never commit real values.

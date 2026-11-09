@@ -50,7 +50,7 @@ The portal endpoint joins **only** the one booking identified by the token hash.
 | Entropy | ≥ 256-bit token; `secrets` module; never sequential/guessable |
 | Storage | Hash only; DB leak alone cannot reconstruct portal access |
 | Transport | HTTPS only; `Cache-Control: no-store`; no indexing (`X-Robots-Tag: noindex`) |
-| Rate limiting | Per-IP + per-token attempts on `/guest/*`; exponential backoff on failures |
+| Rate limiting | Per-IP failed-access budget (60/5 min, shared per NAT) on `/guest-portal/*`; per-token keying was a bypass (Priority 3, `docs/SECURITY.md` S1) |
 | Logging | Log `booking_id` + timestamp on portal access; **never log the full token** |
 | WhatsApp delivery | Link sent to the primary guest's phone via messaging abstraction (mock in dev) |
 | Revocation | ADMIN can rotate token; old link dies immediately |

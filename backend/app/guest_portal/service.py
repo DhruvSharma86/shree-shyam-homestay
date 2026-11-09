@@ -16,10 +16,10 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session as DBSession
 
 from app.auth.rate_limit import (
-    is_rate_limited as _login_limited,
+    is_portal_rate_limited as _ip_limited,
 )
 from app.auth.rate_limit import (
-    register_failed_attempt as _login_fail,
+    register_portal_attempt as _ip_fail,
 )
 from app.auth.service import write_audit
 from app.core.security import compare_tokens, generate_session_token, hash_token
@@ -40,19 +40,14 @@ class PortalAccessDenied(ValueError):
     """Raised when a token does not grant portal access (generic 404 upstream)."""
 
 
-def _portal_key(raw_token: str) -> str:
-    """Rate-limit key for a presented token (hash only, never the token)."""
-    return f"portal:{hash_token(raw_token)[:24]}"
+def is_portal_rate_limited(client_ip: str | None) -> bool:
+    """Return True when this client IP has blown its failed-access budget."""
+    return _ip_limited(client_ip)
 
 
-def is_portal_rate_limited(raw_token: str) -> bool:
-    """Return True when this token hash has blown its failed-access budget."""
-    return _login_limited(_portal_key(raw_token))
-
-
-def register_portal_attempt(raw_token: str) -> None:
-    """Record one unresolvable token access attempt."""
-    _login_fail(_portal_key(raw_token))
+def register_portal_attempt(client_ip: str | None) -> None:
+    """Record one unresolvable token access attempt from this client IP."""
+    _ip_fail(client_ip)
 
 
 def now_utc() -> datetime:

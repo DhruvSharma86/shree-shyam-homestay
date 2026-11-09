@@ -140,4 +140,32 @@ describe('guest portal page', () => {
     const stored = setItem.mock.calls.map((c) => String(c[1])).join(' ');
     expect(stored).not.toContain('tok123');
   });
+
+  it('loads external menu images with no-referrer (no token leakage)', async () => {
+    mocks.overview.mockResolvedValue({
+      hotel_name: 'Shree Shyam Home Stay',
+      booking_ref: 'SSH-AAA',
+      room_number: '101',
+      room_type: 'Deluxe',
+      check_in_date: '2026-11-10',
+      check_out_date: '2026-11-13',
+      nights: 3,
+      status: 'CHECKED_IN',
+      checked_out_at: null,
+      expires_at: null,
+      contact: { contact_number: null, email: null, address: null },
+    });
+    mocks.menu.mockResolvedValue({
+      categories: [{ category: 'Breakfast', items: [{ name: 'Poha', description: 'light', price: '120.00', image_url: 'https://images.test/poha.jpg', is_vegetarian: true }] }],
+    });
+    mocks.cab.mockResolvedValue({ providers: [] });
+    mocks.wifi.mockResolvedValue({ ssid: null, password: null });
+    mocks.tourism.mockResolvedValue({ packages: [], local_info: [] });
+    mocks.receipt.mockRejectedValue(new Error('404'));
+    const { container } = wrap();
+    await waitFor(() => expect(screen.getByText('Poha')).toBeInTheDocument());
+    const img = container.querySelector('img');
+    expect(img).not.toBeNull();
+    expect(img?.getAttribute('referrerpolicy')).toBe('no-referrer');
+  });
 });

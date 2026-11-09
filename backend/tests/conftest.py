@@ -42,6 +42,21 @@ def _reset_engine_after_session():
     reset_engine()
 
 
+@pytest.fixture(autouse=True)
+def _clear_rate_limits():
+    """Clear the in-process rate-limit store before each test.
+
+    Portal budgets are per-IP; without this, failures from one test would
+    exhaust the budget shared by the TestClient peer ("testclient") for the
+    next test (300s sliding window). Every test starts with a clean budget.
+    """
+    from app.auth.rate_limit import _attempts
+
+    _attempts.clear()
+    yield
+    _attempts.clear()
+
+
 @pytest.fixture(scope="session")
 def _schema():
     """Create all tables once per session; drop them at the end.

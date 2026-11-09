@@ -27,10 +27,18 @@ CSRF_FAILED = ApiError(403, "CSRF_FAILED", "CSRF token missing or invalid.")
 
 
 def _client_ip(request: Request) -> str | None:
-    """Return the client IP (first X-Forwarded-For entry or direct peer)."""
-    forwarded = request.headers.get("x-forwarded-for")
-    if forwarded:
-        return forwarded.split(",")[0].strip() or None
+    """Return the client IP for rate-limiting and auditing.
+
+    ``X-Forwarded-For`` is honoured only when ``trusted_proxy_enabled`` is
+    True (Priority 3 audit): without a proxy that strips spoofed XFF, the
+    header is fully client-controlled and lets an attacker rotate fake IPs
+    to evade IP budgets or poison audit IPs. Default is peer-only.
+    """
+    settings = get_settings()
+    if settings.trusted_proxy_enabled:
+        forwarded = request.headers.get("x-forwarded-for")
+        if forwarded:
+            return forwarded.split(",")[0].strip() or None
     return request.client.host if request.client else None
 
 

@@ -138,6 +138,13 @@
 - [x] Frontend tests: 26 tests (receptionist recovery guidance + per-role flows); backend: 219 passed locally, full CI green
 - Next: continue Phase 5.3 (security/mobile/error hardening) — do not start automatically.
 
+#### Phase 5.3 Priority 3 — Guest portal security audit ✅ (complete, 2026-11-09)
+- [x] Code-level audit (source + automated reproduction, not a penetration test). Confirmed: S1 High per-token limiter bypass → per-IP budget (60/300s) + bounded store; S2 Medium image Referer leak → `no-referrer`; S3 Medium missing headers → backend middleware + Next.js `headers()`; S4 Medium XFF spoofing → `trusted_proxy_enabled` opt-in; S5 Low unbounded store → bounded FIFO.
+- [x] Verified safe (not vulnerabilities): entropy/hashing/constant-time compare, hash-only storage + partial unique index, strict 24h expiry, cross-booking isolation (no ID params), guest schemas (no PII/IDs/money), receipt immutability, session/CSRF/RBAC, no frontend token storage.
+- [x] Tests: backend `test_guest_portal_security.py` (13) + frontend no-referrer + headers contract. Backend 241 passed/17 skipped; frontend 29/29; ruff/mypy/build clean; no migration.
+- **Exit criteria met:** confirmed issues fixed with regression tests; residual risks documented in `docs/SECURITY.md`.
+- Next: Phase 5.3 Priority 4 (mobile/error hardening) — do not start automatically.
+
 ## Phase 6 — Reports, audit viewer, public website
 - Admin financial/occupancy reports; audit-log viewer
 - Public marketing site (Home/About/Rooms/Gallery/Facilities/Restaurant/Attractions/Contact, Maps embed, tel: links) — **no booking functionality**

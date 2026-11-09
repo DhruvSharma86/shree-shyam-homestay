@@ -13,7 +13,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session as DBSession
 
-from app.auth.dependencies import require_permission, verify_csrf
+from app.auth.dependencies import _client_ip, require_permission, verify_csrf
 from app.core.db import get_db
 from app.core.errors import ApiError
 from app.core.permissions import Permission
@@ -55,20 +55,22 @@ def _portal_json(payload, status_code: int = 200) -> JSONResponse:
     )
 
 
-def _resolve(db: DBSession, raw_token: str) -> Booking:
+def _resolve(db: DBSession, raw_token: str, request: Request) -> Booking:
     """Resolve a token to its booking or raise the generic 404.
 
-    Also applies brute-force guarding and records a last-accessed
-    timestamp (a GET response may update that one metadata column).
+    Also applies brute-force guarding (per-IP failed-access budget) and
+    records a last-accessed timestamp (a GET response may update that one
+    metadata column).
     """
+    client_ip = _client_ip(request)
     if len(raw_token) > 256:
         raise GENERIC_404
-    if portal.is_portal_rate_limited(raw_token):
+    if portal.is_portal_rate_limited(client_ip):
         raise ApiError(429, "RATE_LIMITED", "Too many failed accesses; try again later.")
     try:
         _, booking = portal.resolve_portal_token(db, raw_token, touch=True)
     except portal.PortalAccessDenied:
-        portal.register_portal_attempt(raw_token)
+        portal.register_portal_attempt(client_ip)
         raise GENERIC_404 from None
     return booking
 
@@ -76,10 +78,11 @@ def _resolve(db: DBSession, raw_token: str) -> Booking:
 @router.get("/{token}/overview", response_model=PortalOverviewResponse)
 def portal_overview(
     token: str,
+    request: Request,
     db: DBSession = Depends(get_db),
 ) -> JSONResponse:
     """Booking-relevant fields only (no ids, no money, no PII)."""
-    booking = _resolve(db, token)
+    booking = _resolve(db, token, request)
     db.commit()
     return _portal_json(portal.portal_overview(db, booking))
 
@@ -87,10 +90,11 @@ def portal_overview(
 @router.get("/{token}/menu", response_model=PortalMenuResponse)
 def portal_menu(
     token: str,
+    request: Request,
     db: DBSession = Depends(get_db),
 ) -> JSONResponse:
     """Active guest-visible menu."""
-    _resolve(db, token)
+    _resolve(db, token, request)
     db.commit()
     categories = [
         PortalMenuCategory(
@@ -114,10 +118,11 @@ def portal_menu(
 @router.get("/{token}/cab", response_model=PortalCabResponse)
 def portal_cab(
     token: str,
+    request: Request,
     db: DBSession = Depends(get_db),
 ) -> JSONResponse:
     """Active guest-visible cab providers."""
-    _resolve(db, token)
+    _resolve(db, token, request)
     db.commit()
     providers = [
         PortalCabItem(
@@ -134,10 +139,11 @@ def portal_cab(
 @router.get("/{token}/wifi", response_model=PortalWifiResponse)
 def portal_wifi(
     token: str,
+    request: Request,
     db: DBSession = Depends(get_db),
 ) -> JSONResponse:
     """Wi-Fi name/password only when configured (never invented)."""
-    _resolve(db, token)
+    _resolve(db, token, request)
     db.commit()
     return _portal_json(portal.portal_wifi(db))
 
@@ -145,10 +151,11 @@ def portal_wifi(
 @router.get("/{token}/tourism", response_model=PortalTourismResponse)
 def portal_tourism(
     token: str,
+    request: Request,
     db: DBSession = Depends(get_db),
 ) -> JSONResponse:
     """Active tour packages and local information (empty when unconfigured)."""
-    _resolve(db, token)
+    _resolve(db, token, request)
     db.commit()
     data = portal.portal_tourism(db)
     return _portal_json(
@@ -162,10 +169,11 @@ def portal_tourism(
 @router.get("/{token}/receipt", response_model=PortalReceiptResponse)
 def portal_receipt(
     token: str,
+    request: Request,
     db: DBSession = Depends(get_db),
 ) -> JSONResponse:
     """Final receipt metadata (404 when not issued yet)."""
-    booking = _resolve(db, token)
+    booking = _resolve(db, token, request)
     db.commit()
     receipt = portal.portal_final_receipt(db, booking.id)
     if receipt is None:
@@ -182,10 +190,11 @@ def portal_receipt(
 @router.get("/{token}/receipt/download")
 def portal_receipt_download(
     token: str,
+    request: Request,
     db: DBSession = Depends(get_db),
 ) -> Response:
     """Download this booking's stored FINAL receipt PDF (never generated)."""
-    booking = _resolve(db, token)
+    booking = _resolve(db, token, request)
     db.commit()
     receipt = portal.portal_final_receipt(db, booking.id)
     if receipt is None:

@@ -8,8 +8,9 @@ Wiring order: settings → logging → FastAPI app → error handlers → router
 No business logic lives here; each capability is a router module.
 """
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from app import models as _models  # noqa: F401  (registers ORM models on Base.metadata)
 from app.api.health import router as health_router
@@ -26,6 +27,33 @@ from app.hotel.restaurant_router import router as restaurant_router
 from app.hotel.router import router as hotel_router
 from app.hotel.tourism_router import router as tourism_router
 from app.reports.router import router as reports_router
+
+
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    """Add baseline security headers to every API response (Priority 3).
+
+    Portal responses additionally get ``no-store, private`` so guest
+    content never lands in shared caches — including error responses
+    produced by the global exception handlers.
+    """
+
+    async def dispatch(self, request: Request, call_next) -> Response:
+        response = await call_next(request)
+        response.headers.setdefault("X-Content-Type-Options", "nosniff")
+        response.headers.setdefault("X-Frame-Options", "DENY")
+        response.headers.setdefault("Referrer-Policy", "no-referrer")
+        response.headers.setdefault(
+            "Permissions-Policy", "camera=(), microphone=(), geolocation=()"
+        )
+        response.headers.setdefault("Cross-Origin-Referrer-Policy", "no-referrer")
+        if request.url.path.startswith("/api/v1/guest-portal/"):
+            response.headers.setdefault("Cache-Control", "no-store, private")
+            response.headers.setdefault("Pragma", "no-cache")
+            response.headers.setdefault("X-Robots-Tag", "noindex, nofollow")
+            response.headers.setdefault(
+                "Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'"
+            )
+        return response
 
 
 def create_app() -> FastAPI:
@@ -49,6 +77,7 @@ def create_app() -> FastAPI:
         allow_methods=["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
         allow_headers=["*"],
     )
+    app.add_middleware(SecurityHeadersMiddleware)
 
     register_error_handlers(app)
 

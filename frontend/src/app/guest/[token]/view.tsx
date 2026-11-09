@@ -77,7 +77,7 @@ export function GuestPortalView({ token }: { token: string }) {
                     <li key={`${cat.category}-${item.name}`} className="flex items-start gap-3">
                       {item.image_url ? (
                         // eslint-disable-next-line @next/next/no-img-element -- external menu photos can't use next/image without remote config
-                        <img src={item.image_url} alt="" className="h-12 w-12 rounded object-cover" loading="lazy" />
+                        <img src={item.image_url} alt="" className="h-12 w-12 rounded object-cover" loading="lazy" referrerPolicy="no-referrer" />
                       ) : null}
                       <div>
                         <p className="text-sm">{item.name} {item.is_vegetarian ? <span className="text-xs text-green-700">(Veg)</span> : null}</p>

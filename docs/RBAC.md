@@ -117,3 +117,6 @@ Every `/api/v1/reports/*` endpoint (financial summary/collections/methods/outsta
 | `PATCH /api/v1/bookings/{id}` | `bookings.write` (both roles, CSRF required) |
 | `POST /api/v1/bookings/{id}/cancel` | `bookings.cancel` (both roles, CSRF required) |
 | `GET /api/v1/bookings` / `GET /api/v1/bookings/availability` | `bookings.read` (both roles) |
+
+### Priority 3 security hardening (2026-11-09)
+No RBAC changes: backend permissions remain authoritative and unchanged. The Priority 3 audit tightened abuse controls around the existing model — per-IP portal brute-force budget, bounded limiter store, spoof-proof client-IP resolution (`trusted_proxy_enabled`, default peer-only) — and added baseline headers. See `docs/SECURITY.md` for the threat model, findings (S1–S5), and residual risks.
