@@ -154,6 +154,16 @@
 - **Exit criteria met:** guest portal usable at 320px–1440px per code-level classes (jsdom cannot measure pixels — see limitations); WCAG 2.2 AA practical coverage automated where jsdom allows.
 - Next: Phase 5.3 Priority 5 (error/connectivity) — do not start automatically.
 
+#### Phase 5.3 Priority 5 — Error, connectivity & recovery ✅ (complete, 2026-11-09)
+- [x] Error classification (`lib/api.ts`): `network`/`timeout`/`server`/`invalid`/`auth`/`forbidden`/`validation`/`conflict`/`generic` — friendly messages only (no raw backend dumps); guest 404 stays generic (no oracle; 404/401/403/422 never retried)
+- [x] Guest connectivity: overview network/timeout/5xx states distinct from invalid-link, each with a "Try again" (refetch, no full reload); per-section retry buttons; receipt 404 → informational Empty vs other kinds → error + retry; invalid links clear that token's cached queries; token-keyed query isolation preserved
+- [x] Retry: bounded GET retries (≤2, exponential 1s/2s cap 5s) for network/timeout/5xx only; mutations (`retry: false`) never auto-retry — timeout/network guidance explains the outcome may be unknown and to inspect booking state first (payment/check-in/rotate/revoke)
+- [x] Staff: bookings list/detail errors now surfaced with retry (were masked as empty/not-found); fixed stale portal admin URLs in `bookingsApi` (`/guest-portal/admin-rotate|admin-revoke/{id}`); 15s axios timeouts on both clients; receipt blob validated as `application/pdf`
+- [x] Security preserved: no retry on 404 (no new oracle), no persisted guest/phone/token, no token logging, no-referrer/no-store headers intact
+- [x] Tests: frontend **50/50** (+16: classifier/retry unit tests, network/timeout/503 states, 404 single-attempt, section retry, token isolation, payment unknown-outcome single attempt). Backend portal subset 16 passed (unchanged backend). No offline-device testing performed (mocked failures only).
+- **Exit criteria met:** deliberate retry policy + classified recovery covered by automated tests; raw-token recovery model unchanged (ADMIN rotation).
+- Next: Phase 5.3 Priority 6 (operational readiness) — do not start automatically.
+
 ## Phase 6 — Reports, audit viewer, public website
 - Admin financial/occupancy reports; audit-log viewer
 - Public marketing site (Home/About/Rooms/Gallery/Facilities/Restaurant/Attractions/Contact, Maps embed, tel: links) — **no booking functionality**

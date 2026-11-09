@@ -30,3 +30,10 @@ export function Spinner() { return <p className="p-4 text-sm text-stone-500" rol
 export function Err({ message }: { message: string }) {
   return <p className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700" role="alert">{message}</p>;
 }
+export function RetryButton({ onRetry, label }: { onRetry: () => void; label: string }) {
+  return (
+    <Button type="button" onClick={onRetry} aria-label={label}>
+      Try again
+    </Button>
+  );
+}

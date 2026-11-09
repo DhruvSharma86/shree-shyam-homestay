@@ -1,26 +1,77 @@
 'use client';
-import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useEffect, useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { downloadReceipt, guestPortalApi } from '@/services/guestPortal';
-import { Button, Card, Empty, Err, Spinner } from '@/components/ui/primitives';
+import { classifyError, classifiedMessage, retryDelayMs, shouldRetryQuery, type ErrorKind } from '@/lib/api';
+import { Button, Card, Empty, Err, RetryButton, Spinner } from '@/components/ui/primitives';
 
 function telHref(phone: string): string {
   return `tel:${phone.replace(/[^+\d]/g, '')}`;
 }
 
+function sectionError(kind: ErrorKind, fallback: string) {
+  return kind === 'network' || kind === 'timeout' || kind === 'server' || kind === 'unavailable'
+    ? classifiedMessage(kind)
+    : fallback;
+}
+
 export function GuestPortalView({ token }: { token: string }) {
-  const overview = useQuery({ queryKey: ['guest-overview', token], queryFn: () => guestPortalApi.overview(token) });
-  const menu = useQuery({ queryKey: ['guest-menu', token], queryFn: () => guestPortalApi.menu(token) });
-  const cab = useQuery({ queryKey: ['guest-cab', token], queryFn: () => guestPortalApi.cab(token) });
-  const wifi = useQuery({ queryKey: ['guest-wifi', token], queryFn: () => guestPortalApi.wifi(token) });
-  const tourism = useQuery({ queryKey: ['guest-tourism', token], queryFn: () => guestPortalApi.tourism(token) });
-  const receipt = useQuery({ queryKey: ['guest-receipt', token], queryFn: () => guestPortalApi.receipt(token), retry: false });
+  const qc = useQueryClient();
+  const overview = useQuery({
+    queryKey: ['guest-overview', token],
+    queryFn: () => guestPortalApi.overview(token),
+    retry: shouldRetryQuery,
+    retryDelay: retryDelayMs,
+  });
+  const menu = useQuery({
+    queryKey: ['guest-menu', token],
+    queryFn: () => guestPortalApi.menu(token),
+    retry: shouldRetryQuery,
+    retryDelay: retryDelayMs,
+  });
+  const cab = useQuery({
+    queryKey: ['guest-cab', token],
+    queryFn: () => guestPortalApi.cab(token),
+    retry: shouldRetryQuery,
+    retryDelay: retryDelayMs,
+  });
+  const wifi = useQuery({
+    queryKey: ['guest-wifi', token],
+    queryFn: () => guestPortalApi.wifi(token),
+    retry: shouldRetryQuery,
+    retryDelay: retryDelayMs,
+  });
+  const tourism = useQuery({
+    queryKey: ['guest-tourism', token],
+    queryFn: () => guestPortalApi.tourism(token),
+    retry: shouldRetryQuery,
+    retryDelay: retryDelayMs,
+  });
+  const receipt = useQuery({
+    queryKey: ['guest-receipt', token],
+    queryFn: () => guestPortalApi.receipt(token),
+    retry: shouldRetryQuery,
+    retryDelay: retryDelayMs,
+  });
 
   const [copiedWifi, setCopiedWifi] = useState(false);
   const [wifiError, setWifiError] = useState('');
   const [receiptError, setReceiptError] = useState('');
 
-  const loading = overview.isLoading;
+  // Drop this token's sensitive cached data when the link proves invalid
+  // (generic 404). Also never present another token's data: queries are
+  // token-keyed, and the invalid state below renders no content.
+  useEffect(() => {
+    if (overview.isError && classifyError(overview.error).kind === 'invalid') {
+      qc.removeQueries({ queryKey: ['guest-menu', token] });
+      qc.removeQueries({ queryKey: ['guest-cab', token] });
+      qc.removeQueries({ queryKey: ['guest-wifi', token] });
+      qc.removeQueries({ queryKey: ['guest-tourism', token] });
+      qc.removeQueries({ queryKey: ['guest-receipt', token] });
+    }
+  }, [overview.isError, overview.error, qc, token]);
+
+  const loading = overview.isFetching && !overview.data;
 
   async function onDownload() {
     setReceiptError('');
@@ -32,8 +83,15 @@ export function GuestPortalView({ token }: { token: string }) {
       a.download = `${receipt.data?.receipt_ref ?? 'receipt'}.pdf`;
       a.click();
       window.URL.revokeObjectURL(url);
-    } catch {
-      setReceiptError('The receipt could not be downloaded right now. Please try again or ask reception.');
+    } catch (e) {
+      const { kind } = classifyError(e);
+      if (kind === 'invalid') {
+        setReceiptError('This link is no longer valid.');
+      } else if (kind === 'network' || kind === 'timeout' || kind === 'server') {
+        setReceiptError(`${classifiedMessage(kind)}`);
+      } else {
+        setReceiptError('The receipt could not be downloaded right now. Please try again or ask reception.');
+      }
     }
   }
 
@@ -63,14 +121,38 @@ export function GuestPortalView({ token }: { token: string }) {
 
   if (loading) return <div className="mx-auto max-w-3xl p-4"><Spinner /></div>;
   if (overview.isError) {
+    const { kind } = classifyError(overview.error);
+    if (kind === 'invalid') {
+      return (
+        <div className="mx-auto max-w-3xl p-4">
+          <Card>
+            <div role="alert">
+              <h1 className="text-xl font-semibold">This link is no longer valid</h1>
+              <p className="mt-2 text-sm text-stone-600">
+                Your guest link may have expired or been replaced. Please call reception if your stay is still open.
+              </p>
+            </div>
+          </Card>
+        </div>
+      );
+    }
+    // Connectivity / temporary server failure — distinct from invalid links,
+    // with manual retry (never silently refresh the whole page).
     return (
       <div className="mx-auto max-w-3xl p-4">
         <Card>
           <div role="alert">
-            <h1 className="text-xl font-semibold">This link is no longer valid</h1>
+            <h1 className="text-xl font-semibold">{classifiedMessage(kind)}</h1>
             <p className="mt-2 text-sm text-stone-600">
-              Your guest link may have expired or been replaced. Please call reception if your stay is still open.
+              {kind === 'timeout'
+                ? 'Your connection timed out. Your guest link may still be valid.'
+                : kind === 'network'
+                  ? 'Your guest link may still be valid — nothing about your stay changed.'
+                  : 'There is a temporary problem on our side. Your stay is unaffected.'}
             </p>
+            <div className="mt-3">
+              <RetryButton onRetry={() => void overview.refetch()} label="Retry loading your guest portal" />
+            </div>
           </div>
         </Card>
       </div>
@@ -120,7 +202,12 @@ export function GuestPortalView({ token }: { token: string }) {
       <section aria-labelledby="menu-heading">
         <Card>
           <h2 id="menu-heading" className="font-medium">Restaurant menu</h2>
-          {menu.isLoading ? <Spinner /> : menu.isError ? <Err message="Menu is unavailable right now." /> : (
+          {menu.isLoading ? <Spinner /> : menu.isError ? (
+            <div className="mt-2 space-y-2">
+              <Err message={sectionError(classifyError(menu.error).kind, 'Menu is unavailable right now.')} />
+              <RetryButton onRetry={() => void menu.refetch()} label="Retry loading the menu" />
+            </div>
+          ) : (
             (menu.data?.categories.length ?? 0) === 0 ? <Empty title="No menu published yet" /> : (
             <div className="mt-2 space-y-4">
               {menu.data?.categories.map((cat) => (
@@ -151,7 +238,12 @@ export function GuestPortalView({ token }: { token: string }) {
       <section aria-labelledby="cab-heading">
         <Card>
           <h2 id="cab-heading" className="font-medium">Cabs</h2>
-          {cab.isLoading ? <Spinner /> : cab.isError ? <Err message="Cab information is unavailable right now." /> : (
+          {cab.isLoading ? <Spinner /> : cab.isError ? (
+            <div className="mt-2 space-y-2">
+              <Err message={sectionError(classifyError(cab.error).kind, 'Cab information is unavailable right now.')} />
+              <RetryButton onRetry={() => void cab.refetch()} label="Retry loading cab information" />
+            </div>
+          ) : (
             (cab.data?.providers.length ?? 0) === 0 ? <Empty title="No cab providers listed yet" /> : (
             <div className="mt-2 space-y-4">
               {cab.data?.providers.map((p) => (
@@ -179,7 +271,12 @@ export function GuestPortalView({ token }: { token: string }) {
       <section aria-labelledby="tourism-heading">
         <Card>
           <h2 id="tourism-heading" className="font-medium">Tourism &amp; local information</h2>
-          {tourism.isLoading ? <Spinner /> : tourism.isError ? <Err message="Local information is unavailable right now." /> : (
+          {tourism.isLoading ? <Spinner /> : tourism.isError ? (
+            <div className="mt-2 space-y-2">
+              <Err message={sectionError(classifyError(tourism.error).kind, 'Local information is unavailable right now.')} />
+              <RetryButton onRetry={() => void tourism.refetch()} label="Retry loading tourism information" />
+            </div>
+          ) : (
             <>
               {(tourism.data?.packages.length ?? 0) === 0 && (tourism.data?.local_info.length ?? 0) === 0 ? (
                 <Empty title="No local guide yet" hint="Ask reception for suggestions." />
@@ -225,7 +322,12 @@ export function GuestPortalView({ token }: { token: string }) {
       <section aria-labelledby="wifi-heading">
         <Card>
           <h2 id="wifi-heading" className="font-medium">Wi-Fi</h2>
-          {wifi.isLoading ? <Spinner /> : wifi.isError ? <Err message="Wi-Fi information is unavailable." /> : (
+          {wifi.isLoading ? <Spinner /> : wifi.isError ? (
+            <div className="mt-2 space-y-2">
+              <Err message={sectionError(classifyError(wifi.error).kind, 'Wi-Fi information is unavailable.')} />
+              <RetryButton onRetry={() => void wifi.refetch()} label="Retry loading Wi-Fi information" />
+            </div>
+          ) : (
             !wifi.data?.ssid ? <Empty title="No Wi-Fi details configured" /> : (
             <div className="mt-2 space-y-2">
               <p className="break-all text-sm"><b>Network:</b> {wifi.data.ssid}</p>
@@ -248,7 +350,14 @@ export function GuestPortalView({ token }: { token: string }) {
         <Card>
           <h2 id="receipt-heading" className="font-medium">Receipt</h2>
           {receipt.isLoading ? <Spinner /> : receipt.isError ? (
-            <Empty title="Receipt not available yet" hint="Your final receipt appears here after checkout." />
+            classifyError(receipt.error).kind === 'invalid' ? (
+              <Empty title="Receipt not available yet" hint="Your final receipt appears here after checkout." />
+            ) : (
+              <div className="mt-2 space-y-2">
+                <Err message={sectionError(classifyError(receipt.error).kind, 'Receipt is unavailable right now.')} />
+                <RetryButton onRetry={() => void receipt.refetch()} label="Retry loading receipt status" />
+              </div>
+            )
           ) : (
             <div className="mt-2 space-y-2">
               <p className="break-words text-sm">Receipt {receipt.data?.receipt_ref}</p>

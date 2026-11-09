@@ -30,12 +30,40 @@ vi.mock('@/services/guestPortal', () => ({
   downloadReceipt: (t: string) => mocks.download(t),
 }));
 
-function wrap() {
+function wrap(qc?: QueryClient) {
   return render(
-    <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+    <QueryClientProvider client={qc ?? new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
       <GuestPortalView token="tok123" />
     </QueryClientProvider>,
   );
+}
+
+function apiError(status: number) {
+  const e = new Error(`Request failed with status code ${status}`) as Error & {
+    isAxiosError?: boolean;
+    code?: string;
+    response: unknown;
+    config: object;
+    request: object;
+  };
+  e.isAxiosError = true;
+  e.config = {};
+  e.request = {};
+  e.response = { status, data: { error: { message: 'detail' } } };
+  return e;
+}
+
+function networkError() {
+  const e = new Error('Network Error') as Error & {
+    isAxiosError?: boolean;
+    response?: unknown;
+    config: object;
+    request: object;
+  };
+  e.isAxiosError = true;
+  e.config = {};
+  e.request = {};
+  return e;
 }
 
 describe('guest portal page', () => {
@@ -57,7 +85,7 @@ describe('guest portal page', () => {
     mocks.cab.mockResolvedValue({ providers: [] });
     mocks.wifi.mockResolvedValue({ ssid: null, password: null });
     mocks.tourism.mockResolvedValue({ packages: [], local_info: [] });
-    mocks.receipt.mockRejectedValue(new Error('404'));
+    mocks.receipt.mockRejectedValue(apiError(404));
     wrap();
     await waitFor(() => expect(screen.getByText(/Welcome to Shree Shyam Home Stay/i)).toBeInTheDocument());
     expect(screen.getByText(/SSH-AAA/)).toBeInTheDocument();
@@ -105,12 +133,12 @@ describe('guest portal page', () => {
   });
 
   it('shows expired/invalid-link state without technical details', async () => {
-    mocks.overview.mockRejectedValue(new Error('404'));
-    mocks.menu.mockRejectedValue(new Error('404'));
-    mocks.cab.mockRejectedValue(new Error('404'));
-    mocks.wifi.mockRejectedValue(new Error('404'));
-    mocks.tourism.mockRejectedValue(new Error('404'));
-    mocks.receipt.mockRejectedValue(new Error('404'));
+    mocks.overview.mockRejectedValue(apiError(404));
+    mocks.menu.mockRejectedValue(apiError(404));
+    mocks.cab.mockRejectedValue(apiError(404));
+    mocks.wifi.mockRejectedValue(apiError(404));
+    mocks.tourism.mockRejectedValue(apiError(404));
+    mocks.receipt.mockRejectedValue(apiError(404));
     wrap();
     await waitFor(() => expect(screen.getByText(/This link is no longer valid/i)).toBeInTheDocument());
   });
@@ -133,7 +161,7 @@ describe('guest portal page', () => {
     mocks.cab.mockResolvedValue({ providers: [] });
     mocks.wifi.mockResolvedValue({ ssid: null, password: null });
     mocks.tourism.mockResolvedValue({ packages: [], local_info: [] });
-    mocks.receipt.mockRejectedValue(new Error('404'));
+    mocks.receipt.mockRejectedValue(apiError(404));
     const setItem = vi.spyOn(window.localStorage, 'setItem');
     wrap();
     await waitFor(() => expect(screen.getByText(/Welcome to Shree Shyam Home Stay/i)).toBeInTheDocument());
@@ -161,7 +189,7 @@ describe('guest portal page', () => {
     mocks.cab.mockResolvedValue({ providers: [] });
     mocks.wifi.mockResolvedValue({ ssid: null, password: null });
     mocks.tourism.mockResolvedValue({ packages: [], local_info: [] });
-    mocks.receipt.mockRejectedValue(new Error('404'));
+    mocks.receipt.mockRejectedValue(apiError(404));
     const { container } = wrap();
     await waitFor(() => expect(screen.getByText('Poha')).toBeInTheDocument());
     const img = container.querySelector('img');
@@ -190,7 +218,7 @@ describe('guest portal page', () => {
     mocks.cab.mockResolvedValue({ providers: [] });
     mocks.wifi.mockResolvedValue({ ssid: null, password: null });
     mocks.tourism.mockResolvedValue({ packages: [], local_info: [] });
-    mocks.receipt.mockRejectedValue(new Error('404'));
+    mocks.receipt.mockRejectedValue(apiError(404));
     const { container } = wrap();
     await waitFor(() => expect(screen.getByText(/Welcome to Shree Shyam Home Stay/i)).toBeInTheDocument());
     expect(container.querySelectorAll('h1')).toHaveLength(1);
@@ -249,12 +277,12 @@ describe('guest portal page', () => {
   });
 
   it('announces invalid-link errors and long content wraps without overflow hooks', async () => {
-    mocks.overview.mockRejectedValue(new Error('404'));
-    mocks.menu.mockRejectedValue(new Error('404'));
-    mocks.cab.mockRejectedValue(new Error('404'));
-    mocks.wifi.mockRejectedValue(new Error('404'));
-    mocks.tourism.mockRejectedValue(new Error('404'));
-    mocks.receipt.mockRejectedValue(new Error('404'));
+    mocks.overview.mockRejectedValue(apiError(404));
+    mocks.menu.mockRejectedValue(apiError(404));
+    mocks.cab.mockRejectedValue(apiError(404));
+    mocks.wifi.mockRejectedValue(apiError(404));
+    mocks.tourism.mockRejectedValue(apiError(404));
+    mocks.receipt.mockRejectedValue(apiError(404));
     wrap();
     await waitFor(() => expect(screen.getByRole('alert', { name: '' })).toBeInTheDocument());
     expect(screen.getByText(/This link is no longer valid/i)).toBeInTheDocument();
@@ -287,7 +315,7 @@ describe('guest portal page', () => {
       packages: [{ name: longName, description: longDesc, duration: null, price: null, image_url: null, contact_number: null }],
       local_info: [],
     });
-    mocks.receipt.mockRejectedValue(new Error('404'));
+    mocks.receipt.mockRejectedValue(apiError(404));
     const { container } = wrap();
     await waitFor(() => expect(screen.getByText(new RegExp('Hotel ' + 'A'.repeat(10)))).toBeInTheDocument());
     // Stay definition list is single-column on phones, two columns from sm up.
@@ -320,10 +348,137 @@ describe('guest portal page', () => {
     mocks.wifi.mockResolvedValue({ ssid: null, password: null });
     mocks.tourism.mockResolvedValue({ packages: [], local_info: [] });
     mocks.receipt.mockResolvedValue({ receipt_ref: 'RCPT-AAA', kind: 'FINAL', content_hash: 'abc' });
-    mocks.download.mockRejectedValue(new Error('network'));
+    mocks.download.mockRejectedValue(networkError());
     wrap();
     await waitFor(() => expect(screen.getByRole('button', { name: /Download final receipt PDF/i })).toBeInTheDocument());
     screen.getByText('Download PDF').click();
-    await waitFor(() => expect(screen.getByText(/could not be downloaded/i)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/Connection failed/i)).toBeInTheDocument());
+  });
+
+  it('shows a connection state (not invalid-link) for overview network failure, with retry', async () => {
+    mocks.overview.mockRejectedValue(networkError());
+    mocks.menu.mockRejectedValue(apiError(404));
+    mocks.cab.mockRejectedValue(apiError(404));
+    mocks.wifi.mockRejectedValue(apiError(404));
+    mocks.tourism.mockRejectedValue(apiError(404));
+    mocks.receipt.mockRejectedValue(apiError(404));
+    // Fast retries in tests: override the view-level backoff via a test-only client would not apply
+    // (per-query retry wins), so allow real backoff and a generous timeout.
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    wrap(qc);
+    await waitFor(
+      () => expect(screen.getByText(/Connection failed/i)).toBeInTheDocument(),
+      { timeout: 8000 },
+    );
+    expect(screen.queryByText(/This link is no longer valid/i)).not.toBeInTheDocument();
+  }, 15000);
+
+  it('shows a timeout state for overview timeouts (distinct from invalid-link)', async () => {
+    const timeoutErr = new Error('timeout of 15000ms exceeded') as Error & {
+      isAxiosError?: boolean;
+      code?: string;
+      response?: unknown;
+      config: object;
+      request: object;
+    };
+    timeoutErr.isAxiosError = true;
+    timeoutErr.code = 'ECONNABORTED';
+    timeoutErr.config = {};
+    timeoutErr.request = {};
+    mocks.overview.mockRejectedValue(timeoutErr);
+    mocks.menu.mockRejectedValue(apiError(404));
+    mocks.cab.mockRejectedValue(apiError(404));
+    mocks.wifi.mockRejectedValue(apiError(404));
+    mocks.tourism.mockRejectedValue(apiError(404));
+    mocks.receipt.mockRejectedValue(apiError(404));
+    wrap();
+    await waitFor(
+      () => expect(screen.getByRole('heading', { name: /timed out/i })).toBeInTheDocument(),
+      { timeout: 8000 },
+    );
+    expect(screen.queryByText(/This link is no longer valid/i)).not.toBeInTheDocument();
+  }, 15000);
+
+  it('shows a temporary-service state with retry for 503s', async () => {
+    mocks.overview.mockRejectedValue(apiError(503));
+    mocks.menu.mockRejectedValue(apiError(404));
+    mocks.cab.mockRejectedValue(apiError(404));
+    mocks.wifi.mockRejectedValue(apiError(404));
+    mocks.tourism.mockRejectedValue(apiError(404));
+    mocks.receipt.mockRejectedValue(apiError(404));
+    wrap();
+    await waitFor(
+      () => expect(screen.getByText(/temporarily unavailable/i)).toBeInTheDocument(),
+      { timeout: 8000 },
+    );
+    expect(screen.getByRole('button', { name: /Retry loading your guest portal/i })).toBeInTheDocument();
+  }, 15000);
+
+  it('never retries guest 404s (single attempt, generic invalid-link state)', async () => {
+    mocks.overview.mockRejectedValue(apiError(404));
+    mocks.menu.mockRejectedValue(apiError(404));
+    mocks.cab.mockRejectedValue(apiError(404));
+    mocks.wifi.mockRejectedValue(apiError(404));
+    mocks.tourism.mockRejectedValue(apiError(404));
+    mocks.receipt.mockRejectedValue(apiError(404));
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    wrap(qc);
+    await waitFor(() => expect(screen.getByText(/This link is no longer valid/i)).toBeInTheDocument());
+    expect(mocks.overview).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('button', { name: /Retry loading your guest portal/i })).not.toBeInTheDocument();
+  });
+
+  it('retries transient section failures with a per-section retry action', async () => {
+    mocks.overview.mockResolvedValue({
+      hotel_name: 'Shree Shyam Home Stay',
+      booking_ref: 'SSH-AAA',
+      room_number: '101',
+      room_type: 'Deluxe',
+      check_in_date: '2026-11-10',
+      check_out_date: '2026-11-13',
+      nights: 3,
+      status: 'CHECKED_IN',
+      checked_out_at: null,
+      expires_at: null,
+      contact: { contact_number: null, email: null, address: null },
+    });
+    mocks.menu.mockRejectedValue(networkError());
+    mocks.cab.mockResolvedValue({ providers: [] });
+    mocks.wifi.mockResolvedValue({ ssid: null, password: null });
+    mocks.tourism.mockResolvedValue({ packages: [], local_info: [] });
+    mocks.receipt.mockRejectedValue(apiError(404));
+    wrap();
+    await waitFor(
+      () => expect(screen.getByRole('button', { name: /Retry loading the menu/i })).toBeInTheDocument(),
+      { timeout: 8000 },
+    );
+    expect(screen.getByText('Your stay')).toBeInTheDocument();
+  }, 15000);
+
+  it('keeps token isolation: only the rendered token is queried', async () => {
+    mocks.overview.mockResolvedValue({
+      hotel_name: 'Shree Shyam Home Stay',
+      booking_ref: 'SSH-AAA',
+      room_number: '101',
+      room_type: 'Deluxe',
+      check_in_date: '2026-11-10',
+      check_out_date: '2026-11-13',
+      nights: 3,
+      status: 'CHECKED_IN',
+      checked_out_at: null,
+      expires_at: null,
+      contact: { contact_number: null, email: null, address: null },
+    });
+    mocks.menu.mockResolvedValue({ categories: [] });
+    mocks.cab.mockResolvedValue({ providers: [] });
+    mocks.wifi.mockResolvedValue({ ssid: null, password: null });
+    mocks.tourism.mockResolvedValue({ packages: [], local_info: [] });
+    mocks.receipt.mockRejectedValue(apiError(404));
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    wrap(qc);
+    await waitFor(() => expect(screen.getByText(/Welcome to Shree Shyam Home Stay/i)).toBeInTheDocument());
+    expect(mocks.overview).toHaveBeenCalledWith('tok123');
+    expect(qc.getQueryData(['guest-overview', 'tok123'])).toBeDefined();
+    expect(qc.getQueryData(['guest-overview', 'other-token'])).toBeUndefined();
   });
 });

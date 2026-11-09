@@ -21,8 +21,8 @@ export const bookingsApi = {
   checkIn: (id: string) => post<CheckInResult>(`/bookings/${id}/check-in`, {}),
   receipt: (id: string) => get<{ receipt_ref: string; kind: string; content_hash: string }>(`/bookings/${id}/receipt`),
   rotatePortal: (id: string) =>
-    post<{ booking_id: string; portal_access_token: string }>(`/bookings/${id}/guest-portal/rotate`, {}),
-  revokePortal: (id: string) => post<unknown>(`/bookings/${id}/guest-portal/revoke`, {}),
+    post<{ booking_id: string; portal_access_token: string }>(`/guest-portal/admin-rotate/${id}`, {}),
+  revokePortal: (id: string) => post<unknown>(`/guest-portal/admin-revoke/${id}`, {}),
 };
 
 export async function downloadStaffReceipt(bookingId: string): Promise<Blob> {

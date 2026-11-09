@@ -2,9 +2,9 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { bookingsApi } from '@/services/tourism';
-import { apiErrorMessage } from '@/lib/api';
+import { apiErrorMessage, mutationErrorMessage } from '@/lib/api';
 import { useAuthStore } from '@/stores/auth';
-import { Button, Card, Empty, Err, Field, Input, Spinner } from '@/components/ui/primitives';
+import { Button, Card, Empty, Err, Field, Input, RetryButton, Spinner } from '@/components/ui/primitives';
 
 const BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:8000';
 const PREFIX = process.env.NEXT_PUBLIC_API_V1 ?? '/api/v1';
@@ -25,13 +25,18 @@ export default function BookingsPage() {
   const list = useQuery({ queryKey: ['bookings'], queryFn: () => bookingsApi.list() });
   const detail = useQuery({ queryKey: ['booking', selected], queryFn: () => bookingsApi.get(selected as string), enabled: !!selected });
 
+  // Mutations are NEVER auto-retried: a timeout does not prove the server
+  // failed (it may have committed). The error message guides staff to
+  // inspect the current booking state before trying again.
   const recordPayment = useMutation({
     mutationFn: () => bookingsApi.recordCheckInPayment(selected as string, { amount: payment.amount, mode: payment.mode, payment_stage: 'CHECK_IN' }),
+    retry: false,
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['booking', selected] }); },
-    onError: (e) => setErr(apiErrorMessage(e)),
+    onError: (e) => setErr(mutationErrorMessage(e)),
   });
   const checkIn = useMutation({
     mutationFn: () => bookingsApi.checkIn(selected as string),
+    retry: false,
     onSuccess: (result) => {
       // Raw token is shown once for staff relay; never persisted.
       setLinkToken(result.portal_access_token);
@@ -39,21 +44,23 @@ export default function BookingsPage() {
     },
     onError: (e) => {
       setLinkToken(null);
-      setErr(apiErrorMessage(e));
+      setErr(mutationErrorMessage(e));
     },
   });
   const rotate = useMutation({
     mutationFn: () => bookingsApi.rotatePortal(selected as string),
+    retry: false,
     onSuccess: (result) => setLinkToken(result.portal_access_token),
-    onError: (e) => setErr(apiErrorMessage(e)),
+    onError: (e) => setErr(mutationErrorMessage(e)),
   });
   const revoke = useMutation({
     mutationFn: () => bookingsApi.revokePortal(selected as string),
+    retry: false,
     onSuccess: () => {
       setLinkToken(null);
       qc.invalidateQueries({ queryKey: ['booking', selected] });
     },
-    onError: (e) => setErr(apiErrorMessage(e)),
+    onError: (e) => setErr(mutationErrorMessage(e)),
   });
 
   function clearLink() {
@@ -68,7 +75,13 @@ export default function BookingsPage() {
       <div className="mt-4 grid gap-4 lg:grid-cols-2">
         <div className="space-y-2">
           {list.isLoading ? <Spinner /> : null}
-          {(list.data?.items ?? []).length === 0 ? <Empty title="No bookings yet" /> : null}
+          {list.isError ? (
+            <div className="space-y-2">
+              <Err message={apiErrorMessage(list.error)} />
+              <RetryButton onRetry={() => void list.refetch()} label="Retry loading bookings" />
+            </div>
+          ) : null}
+          {!list.isError && (list.data?.items ?? []).length === 0 ? <Empty title="No bookings yet" /> : null}
           {(list.data?.items ?? []).map((b) => (
             <Card key={b.id} className="flex items-center justify-between">
               <div>
@@ -80,7 +93,12 @@ export default function BookingsPage() {
           ))}
         </div>
         <Card>
-          {!selected ? <Empty title="Select a booking" /> : detail.isLoading ? <Spinner /> : !detail.data ? (
+          {!selected ? <Empty title="Select a booking" /> : detail.isLoading ? <Spinner /> : detail.isError ? (
+            <div className="space-y-2">
+              <Err message={apiErrorMessage(detail.error)} />
+              <RetryButton onRetry={() => void detail.refetch()} label="Retry loading booking details" />
+            </div>
+          ) : !detail.data ? (
             <Empty title="Booking not found" />
           ) : (
             <div className="space-y-3">

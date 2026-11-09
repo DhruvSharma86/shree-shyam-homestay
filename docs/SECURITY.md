@@ -69,3 +69,10 @@ a penetration test and is **not** a formal certification.
 - `backend/tests/test_guest_portal.py` — unchanged lifecycle coverage (all still green).
 - `frontend/src/app/guest/[token]/page.test.tsx` — no-storage + no-referrer image assertions.
 - `frontend/src/headers.test.ts` — Next.js `headers()` contract (guest no-store/noindex + global protections).
+
+## 8. Error handling & retry policy (Priority 5, 2026-11-09)
+
+- Frontend errors are classified (`network` / `timeout` / `server` / `invalid` / `auth` / `forbidden` / `validation` / `conflict` / `generic`) and shown as friendly messages — raw backend details are never mirrored.
+- GETs retry only transient network/timeout/5xx outcomes, at most twice (exponential backoff 1s/2s, cap 5s). 404/401/403/422 are never retried, so retrying cannot probe token validity (no new oracle) and the generic 404 behaviour is preserved.
+- Mutations never auto-retry: a timeout may mean the server committed the write. Staff-facing copy explains the outcome is unknown and points at the current booking state (no invented idempotency).
+- Timeouts are 15s on both Axios clients; connectivity/5xx guest states are distinct from the invalid-link state and each offers manual retry (no full reload, no stale-data promotion).

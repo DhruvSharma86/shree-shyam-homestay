@@ -155,4 +155,34 @@ describe('bookings page roles', () => {
     expect(screen.getByText('Tourism')).toBeInTheDocument();
     expect(screen.getByText('Users')).toBeInTheDocument();
   });
+
+  it('payment timeout explains the unknown outcome and never auto-retries', async () => {
+    setRole('rec1', 'RECEPTIONIST', ['bookings.read', 'bookings.checkin', 'billing.payments.write']);
+    mocks.list.mockResolvedValue(LIST);
+    mocks.get.mockResolvedValue(DETAIL);
+    const timeoutErr = new Error('timeout of 15000ms exceeded') as Error & {
+      isAxiosError?: boolean;
+      code?: string;
+      response?: unknown;
+      config: object;
+      request: object;
+    };
+    timeoutErr.isAxiosError = true;
+    timeoutErr.code = 'ECONNABORTED';
+    timeoutErr.config = {};
+    timeoutErr.request = {};
+    mocks.recordPayment.mockRejectedValue(timeoutErr);
+    mocks.checkIn.mockResolvedValue({});
+    wrap();
+    await waitFor(() => expect(screen.getByText('SSH-AAA')).toBeInTheDocument());
+    screen.getByText('Open').click();
+    await waitFor(() => expect(screen.getByText(/Record one-night payment/)).toBeInTheDocument());
+    fireEvent.change(screen.getByPlaceholderText('2500.00'), { target: { value: '2500.00' } });
+    fireEvent.click(screen.getByText('Record one-night payment'));
+    await waitFor(() => expect(mocks.recordPayment).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.getByRole('alert', { name: '' })).toBeInTheDocument());
+    expect(screen.getByText(/Check the current booking state/i)).toBeInTheDocument();
+    expect(mocks.recordPayment).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText(/SECRET-REC/)).not.toBeInTheDocument();
+  });
 });

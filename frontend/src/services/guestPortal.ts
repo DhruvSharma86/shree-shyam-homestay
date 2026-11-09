@@ -13,7 +13,7 @@ const prefix = process.env.NEXT_PUBLIC_API_V1 ?? '/api/v1';
 
 // Guest endpoints are bearer-link gated, not session gated: this client
 // deliberately sends NO cookies and NEVER stores the token.
-export const guestApi = axios.create({ baseURL: `${base}${prefix}` });
+export const guestApi = axios.create({ baseURL: `${base}${prefix}`, timeout: 15000 });
 
 const p = (token: string) => `/guest-portal/${token}`;
 const get = async <T>(path: string) => (await guestApi.get<T>(path)).data;
@@ -30,5 +30,9 @@ export const guestPortalApi = {
 
 export async function downloadReceipt(token: string): Promise<Blob> {
   const res = await guestApi.get(`${p(token)}/receipt/download`, { responseType: 'blob' });
-  return res.data as Blob;
+  const blob = res.data as Blob;
+  if (blob.type !== 'application/pdf' || blob.size === 0) {
+    throw new Error('Invalid receipt response.');
+  }
+  return blob;
 }
