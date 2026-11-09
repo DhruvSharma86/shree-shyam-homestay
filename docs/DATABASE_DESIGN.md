@@ -80,7 +80,7 @@ Singleton row (`singleton_key = 1` UNIQUE). Fields: `id UUID PK`, `singleton_key
 Duplicate rule: one **active** guest per `(phone, lower(full_name))` — stored names are whitespace-collapsed by the service on write, so the index matches the application rule. Enforced by service check + partial unique expression index `ix_guests_phone_name_active (phone, lower(full_name)) WHERE is_active` (PostgreSQL `is_active = TRUE`, SQLite `is_active = 1`). Same phone + different name allowed; exact match → `409` with `existing_guest_id`. Deactivated guests never block re-registration. Soft-deactivation only; never hard-deleted.
 **Aadhaar deferred (not in Phase 3.1):** no image, number, or `id_proof_type/number` columns exist. Full ID-proof handling requires legal review, private encrypted storage, access control and retention rules — a separate approved milestone. `id_proof_type/number` are therefore **not** collected. See SRS §3.3 note.
 
-### 2.10 `bookings` (core) — ✅ implemented (Phase 3.2, migration `e5f6a7b8c9d0`)
+### 2.10 `bookings` (core) — ✅ implemented (Phase 3.2; check-in fields added in Phase 4.2, migration `a8b9c0d1e2f3`)
 | Field | Type | Notes |
 |---|---|---|
 | id | UUID PK | |
@@ -88,7 +88,7 @@ Duplicate rule: one **active** guest per `(phone, lower(full_name))` — stored 
 | guest_id | FK → guests RESTRICT INDEXED | must be an **active** guest at creation |
 | room_id | FK → rooms RESTRICT INDEXED | allocated room (must be active + AVAILABLE) |
 | room_type_id | FK → room_types RESTRICT INDEXED | stamped from the room at creation/reallocation |
-| status | VARCHAR(16) INDEXED | `CONFIRMED` or `CANCELLED` only (Phase 3.2) |
+| status | VARCHAR(16) INDEXED | `CONFIRMED`, `CHECKED_IN` (Phase 4.2) or `CANCELLED` |
 | source | VARCHAR(16) | `PHONE` or `WALK_IN` (no online source exists) |
 | check_in_date | DATE INDEXED | inclusive |
 | check_out_date | DATE | exclusive; CHECK `check_out_date > check_in_date` |
@@ -106,6 +106,8 @@ Duplicate rule: one **active** guest per `(phone, lower(full_name))` — stored 
 | created_at / updated_at | TIMESTAMPTZ | `CURRENT_TIMESTAMP` defaults |
 | cancelled_at | TIMESTAMPTZ NULL | set on cancellation |
 | cancellation_reason | TEXT NULL | optional reason (policy TBD) |
+| checked_in_at | TIMESTAMPTZ NULL | set at check-in (Phase 4.2) |
+| checked_in_by | UUID NULL | actor at check-in (Phase 4.2) |
 
 Not in Phase 3.2 (deferred): `guest_token_hash`, `checkout_at`, folio/payment links — added by later milestones. No guest PII is copied into the booking; `guest_id` is the only link.
 
@@ -136,15 +138,17 @@ Positive = charge; negative = discount/reversal (keeps balance math simple: bala
 
 **Initial room charge:** created exactly once per booking, in the booking-creation transaction, from the booking's `room_subtotal` snapshot (quantity = `nights`, unit_amount = `night_rate_snapshot`) — never recomputed from mutable rates, never merely derived at read time. Exactly-once is enforced by partial unique index `ux_folio_initial_room_charge (booking_id) WHERE is_initial` plus a pre-check in `ensure_initial_charge` (savepoint-guarded, so concurrent attempts converge instead of corrupting the outer transaction). Later stay-date updates that re-snapshot the subtotal append a REVERSAL of the initial plus a new ROOM_CHARGE row (`is_initial=false`) so the folio always follows the booking without editing history. The partial index deliberately targets `is_initial`, not `entry_type='ROOM_CHARGE'`, leaving room for Phase 4.2 extension `ROOM_CHARGE` rows.
 
-**Backfill (documented procedure):** pre-4.1 bookings have no entries. There is no data migration (nothing is fabricated). `GET /bookings/{id}/folio` calls `ensure_initial_charge` — creating the missing snapshot charge idempotently on first read. Cancelled bookings stay history-only (no initial charge is ever created for them).
+**Backfill (documented procedure):** pre-4.1 bookings have no entries. There is no data migration (nothing is fabricated, no silent read-side writes). Initialization is explicit and auditable: `POST /bookings/{id}/folio/initialize` (CSRF, audit `FOLIO_INITIALIZED`) calls `ensure_initial_charge` — creating the missing snapshot charge idempotently (pre-existing rows are returned, never duplicated). `GET /folio` is read-only (Phase 4.2 correction) and never writes. Cancelled bookings stay history-only (no initial charge is ever created for them).
 
 **Immutability:** PostgreSQL triggers `trg_folio_entries_immutable` / `trg_payments_immutable` (BEFORE UPDATE/DELETE, function `reject_financial_mutation()`) reject UPDATE/DELETE; INSERT remains unrestricted. Downgrade drops triggers then the function before dropping tables. **SQLite limitation:** triggers are PostgreSQL-only; SQLite relies on the service layer (no update/delete code paths exist) — verified in `test_postgres_finance_triggers`, explicitly unmatched on SQLite.
 
-### 2.12 `payments` (append-only) — ✅ implemented Phase 4.1 (schema only; write APIs in Phase 4.2)
-`id UUID PK`, `booking_id FK → bookings RESTRICT INDEXED`, `amount NUMERIC(12,2) CHECK > 0`, `mode VARCHAR(16)` ∈ `CASH`, `UPI`, `CARD_POS` (D1, approved), `payment_stage VARCHAR(16)` ∈ `ADVANCE`, `CHECK_IN`, `CHECKOUT`, `OTHER`, `reference_note VARCHAR(255) NULL` (UPI UTR / terminal reference), `received_by UUID NULL`, `received_at TIMESTAMPTZ DEFAULT now()`, `reverses_payment_id FK → payments RESTRICT NULL INDEXED`, `created_by UUID NULL`, `created_at TIMESTAMPTZ`. Same append-only triggers as above. No UPDATE/DELETE paths are exposed; D3 reserves payment-reversal authorisation to ADMIN (ADMIN-only via `billing.payments.write` plus role check in Phase 4.2 — the endpoint itself is deferred). Phase 4.1 exposes only `GET /bookings/{id}/payments` (history is empty until Phase 4.2 writes).
+### 2.12 `payments` (append-only) — ✅ implemented Phase 4.2
+`id UUID PK`, `booking_id FK → bookings RESTRICT INDEXED`, `amount NUMERIC(12,2) CHECK > 0`, `mode VARCHAR(16)` ∈ `CASH`, `UPI`, `CARD_POS` (D1; DB CHECK `ck_payments_mode`), `payment_stage VARCHAR(16)` ∈ `ADVANCE`, `CHECK_IN`, `CHECKOUT`, `OTHER` (DB CHECK `ck_payments_stage`), `reference_note VARCHAR(255) NULL` (UPI UTR / POS reference), `received_by UUID NULL`, `received_at TIMESTAMPTZ DEFAULT now()`, `reverses_payment_id FK → payments RESTRICT NULL INDEXED`, `is_reversal BOOL NOT NULL DEFAULT FALSE` (CHECK `ck_payments_reversal_link` ties flag to link presence), `created_by UUID NULL`, `created_at TIMESTAMPTZ`. Composite index `ix_payments_booking_stage (booking_id, payment_stage)` supports the check-in stage sum. Same append-only triggers as above; no UPDATE/DELETE paths are exposed; corrections are reversal records (original rows never change, never deleted).
+
+**Payment-reversal representation:** a reversal is a new `payments` row with the same positive amount, `is_reversal=true`, `reverses_payment_id=original.id`, reason in `reference_note`. `total_paid` is therefore the **net** collected amount: `SUM(amount WHERE NOT is_reversal) − SUM(amount WHERE is_reversal)`. Duplicate reversals, reversal-of-reversal and cross-booking reversals are rejected (422); the endpoint is ADMIN-only (D3 — role check on `billing.payments.write`).
 
 **Balance rules (authoritative function `app/billing/service.py::folio_totals`):**
-`total_charges = COALESCE(SUM(folio_entries.amount), 0)`, `total_paid = COALESCE(SUM(payments.amount), 0)`, `balance_due = total_charges − total_paid`. No stored running balance (recompute on read; trivial cost at 6 rooms). `Decimal` with `ROUND_HALF_UP` quantization to 2dp; empty sums return `Decimal('0.00')`. Service `NegativeBalanceError` blocks discounts/reversals that would make `total_charges < 0` (422); reversals offset originals without deleting them; already-reversed targets and reversal-of-reversal are rejected (422).
+`total_charges = COALESCE(SUM(folio_entries.amount), 0)`, `total_paid = net payments (see above)`, `balance_due = total_charges − total_paid`. No stored running balance (recompute on read; trivial cost at 6 rooms). `Decimal` with `ROUND_HALF_UP` quantization to 2dp; empty sums return `Decimal('0.00')`. Service `NegativeBalanceError` blocks discounts/reversals that would make `total_charges < 0` (422). Overpayment (D9) is blocked when `total_paid + new > total_charges` unless an ADMIN supplies a mandatory reason (audited); the check runs under a booking-row `SELECT FOR UPDATE` lock, so concurrent payments cannot both overpay.
 
 ### 2.13 `audit_log` (append-only) — ✅ implemented (Phase 1.2)
 `id UUID PK`, `actor_user_id FK → users ON DELETE SET NULL NULL` (NULL = system events such as bootstrap), `action VARCHAR(64) INDEXED` (`AUTH_LOGIN`, `AUTH_LOGOUT`, `AUTH_LOGIN_FAILED`, `PASSWORD_CHANGED`, `PASSWORD_RESET`, `USER_CREATED`, `USER_UPDATED`, `USER_DEACTIVATED`, `SESSIONS_REVOKED`, `ADMIN_BOOTSTRAPPED`, later: `RATE_CHANGED`, `DISCOUNT_APPLIED`, `PAYMENT_REVERSED`, ...), `resource_type VARCHAR(64)`, `resource_id VARCHAR(128)`, `metadata_json JSON NULL` (**safe, non-secret context only** — never passwords/tokens), `ip_address VARCHAR(45) NULL`, `created_at TIMESTAMPTZ INDEXED`. Write path: `app/auth/service.py::write_audit`.

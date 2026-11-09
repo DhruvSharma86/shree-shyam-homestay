@@ -103,10 +103,20 @@ def _dates(nights=3, offset=1):
     return start, start + timedelta(days=nights)
 
 
-def _booking(receptionist_client, admin_client, room_type_id, room_id, guest_id, nights=3):
+def _booking(
+    receptionist_client,
+    admin_client,
+    room_type_id,
+    room_id,
+    guest_id,
+    nights=3,
+    with_rate=True,
+    offset=1,
+):
     """Create a booking (folio initializes atomically) and return its id."""
-    _setup_rate(admin_client, room_type_id)
-    start, end = _dates(nights)
+    if with_rate:
+        _setup_rate(admin_client, room_type_id)
+    start, end = _dates(nights, offset)
     r = receptionist_client.post(
         "/api/v1/bookings",
         json={
@@ -551,3 +561,282 @@ def test_booking_extension_adjusts_folio_consistently(
     entries = folio["entries"]
     assert sum(1 for e in entries if e["is_initial"]) == 1
     assert {e["entry_type"] for e in entries} == {"ROOM_CHARGE", "REVERSAL"}
+
+
+# --- Read-only GET + explicit initialize (Phase 4.2 correction) -----------------
+
+
+def test_get_folio_never_mutates(
+    receptionist_client, admin_client, room_type_id, room_id, guest_id, db_session
+) -> None:
+    """Repeated GETs create no ledger or audit rows (Phase 4.2 correction)."""
+    booking_id = _booking(receptionist_client, admin_client, room_type_id, room_id, guest_id)
+    for _ in range(3):
+        receptionist_client.get(f"/api/v1/bookings/{booking_id}/folio")
+    assert db_session.query(FolioEntry).count() == 1
+    assert db_session.query(Payment).count() == 0
+    audits = db_session.query(AuditLog).filter(AuditLog.action == "FOLIO_INITIALIZED").count()
+    assert audits == 1  # only the creation-time init
+
+
+def test_explicit_initialize_backfill_idempotent(
+    receptionist_client, admin_client, room_type_id, room_id, guest_id, db_session
+) -> None:
+    """Explicit initialize restores a missing initial charge exactly once."""
+    booking_id = _booking(receptionist_client, admin_client, room_type_id, room_id, guest_id)
+    # Simulate a pre-4.1 booking by wiping its ledger through the ORM
+    # (SQLite has no triggers; PG append-only is verified in CI).
+    db_session.query(FolioEntry).delete()
+    db_session.commit()
+    assert db_session.query(FolioEntry).count() == 0
+    init = receptionist_client.post(
+        f"/api/v1/bookings/{booking_id}/folio/initialize",
+        headers=csrf_headers(receptionist_client),
+    )
+    assert init.status_code == 201, init.text
+    assert init.json()["total_charges"] == "7500.00"
+    again = receptionist_client.post(
+        f"/api/v1/bookings/{booking_id}/folio/initialize",
+        headers=csrf_headers(receptionist_client),
+    )
+    assert again.status_code == 201
+    assert db_session.query(FolioEntry).count() == 1
+
+
+# --- Payments ----------------------------------------------------------------
+
+
+def _pay(
+    receptionist_client,
+    booking_id,
+    amount,
+    *,
+    stage="OTHER",
+    mode="CASH",
+    reference=None,
+    reason=None,
+    client=None,
+):
+    payload = {"amount": amount, "mode": mode, "payment_stage": stage, "reference_note": reference}
+    if reason is not None:
+        payload["overpayment_reason"] = reason
+    caller = client or receptionist_client
+    return caller.post(
+        f"/api/v1/bookings/{booking_id}/payments", json=payload, headers=csrf_headers(caller)
+    )
+
+
+def test_payment_success(
+    receptionist_client, admin_client, room_type_id, room_id, guest_id
+) -> None:
+    """Staff-recorded payment lands with receiver, timestamp, mode/stage."""
+    booking_id = _booking(receptionist_client, admin_client, room_type_id, room_id, guest_id)
+    r = _pay(
+        receptionist_client,
+        booking_id,
+        "2000.00",
+        stage="ADVANCE",
+        mode="UPI",
+        reference="UPI123456789012",
+    )
+    assert r.status_code == 201, r.text
+    body = r.json()
+    assert body["amount"] == "2000.00"
+    assert body["mode"] == "UPI"
+    assert body["payment_stage"] == "ADVANCE"
+    assert body["reference_note"] == "UPI123456789012"
+    assert body["is_reversal"] is False
+    folio = receptionist_client.get(f"/api/v1/bookings/{booking_id}/folio").json()
+    assert folio["total_paid"] == "2000.00"
+    assert folio["balance_due"] == "5500.00"
+    history = receptionist_client.get(f"/api/v1/bookings/{booking_id}/payments")
+    assert history.json()["total"] == 1
+
+
+def test_payment_validation(
+    receptionist_client, admin_client, room_type_id, room_id, guest_id
+) -> None:
+    """Invalid amount/mode/stage → 422; unknown booking → 422 (no folio match)."""
+    booking_id = _booking(receptionist_client, admin_client, room_type_id, room_id, guest_id)
+    bad = [
+        {"amount": "0.00", "mode": "CASH", "payment_stage": "OTHER"},
+        {"amount": "-5.00", "mode": "CASH", "payment_stage": "OTHER"},
+        {"amount": "100.00", "mode": "GOLD", "payment_stage": "OTHER"},
+        {"amount": "100.00", "mode": "CASH", "payment_stage": "NOPE"},
+    ]
+    for payload in bad:
+        r = receptionist_client.post(
+            f"/api/v1/bookings/{booking_id}/payments",
+            json=payload,
+            headers=csrf_headers(receptionist_client),
+        )
+        assert r.status_code == 422, payload
+
+
+def test_overpayment_blocked_receptionist_allowed_admin_reason(
+    receptionist_client, admin_client, room_type_id, room_id, guest_id
+) -> None:
+    """D9: overpayments need ADMIN + mandatory reason."""
+    booking_id = _booking(receptionist_client, admin_client, room_type_id, room_id, guest_id)
+    _pay(receptionist_client, booking_id, "7500.00")
+    # Further 1.00 exceeds the 7500.00 folio.
+    staff_blocked = _pay(receptionist_client, booking_id, "1.00", reason="guest asked")
+    assert staff_blocked.status_code == 422
+    admin_without_reason = _pay(
+        receptionist_client, booking_id, "1.00", reason=None, client=admin_client
+    )
+    assert admin_without_reason.status_code == 422
+    admin_ok = _pay(
+        receptionist_client, booking_id, "1.00", reason="goodwill stay", client=admin_client
+    )
+    assert admin_ok.status_code == 201, admin_ok.text
+    folio = admin_client.get(f"/api/v1/bookings/{booking_id}/folio").json()
+    assert folio["total_paid"] == "7501.00"
+    assert folio["balance_due"] == "-1.00"
+
+
+def test_payment_reversal_admin_only(
+    receptionist_client, admin_client, room_type_id, room_id, guest_id
+) -> None:
+    """D3: RECEPTIONIST → 403 on reversal; ADMIN reversal offsets the balance."""
+    booking_id = _booking(receptionist_client, admin_client, room_type_id, room_id, guest_id)
+    payment = _pay(receptionist_client, booking_id, "2500.00").json()
+    denied = receptionist_client.post(
+        f"/api/v1/bookings/{booking_id}/payments/{payment['id']}/reverse",
+        json={"reason": "wrong amount"},
+        headers=csrf_headers(receptionist_client),
+    )
+    assert denied.status_code == 403
+    ok = admin_client.post(
+        f"/api/v1/bookings/{booking_id}/payments/{payment['id']}/reverse",
+        json={"reason": "wrong amount"},
+        headers=csrf_headers(admin_client),
+    )
+    assert ok.status_code == 201, ok.text
+    assert ok.json()["is_reversal"] is True
+    assert ok.json()["reverses_payment_id"] == payment["id"]
+    folio = admin_client.get(f"/api/v1/bookings/{booking_id}/folio").json()
+    assert folio["total_paid"] == "0.00"
+    assert folio["balance_due"] == "7500.00"
+    # Original row untouched.
+    history = admin_client.get(f"/api/v1/bookings/{booking_id}/payments").json()
+    amounts = {p["id"]: p["amount"] for p in history["items"]}
+    assert amounts[payment["id"]] == "2500.00"
+    assert len(history["items"]) == 2
+
+
+def test_payment_reversal_guards(
+    receptionist_client, admin_client, room_type_id, room_id, guest_id
+) -> None:
+    """Duplicate reversal, reversal-of-reversal and cross-booking → 422."""
+    booking_id = _booking(receptionist_client, admin_client, room_type_id, room_id, guest_id)
+    other_id = _booking(
+        receptionist_client,
+        admin_client,
+        room_type_id,
+        room_id,
+        guest_id,
+        nights=1,
+        with_rate=False,
+        offset=10,
+    )
+    payment = _pay(receptionist_client, booking_id, "1000.00").json()
+    admin_client.post(
+        f"/api/v1/bookings/{booking_id}/payments/{payment['id']}/reverse",
+        json={"reason": "first"},
+        headers=csrf_headers(admin_client),
+    )
+    dup = admin_client.post(
+        f"/api/v1/bookings/{booking_id}/payments/{payment['id']}/reverse",
+        json={"reason": "second"},
+        headers=csrf_headers(admin_client),
+    )
+    assert dup.status_code == 422
+    # Cross-booking: valid payment on the other booking, reversed via this URL.
+    cross = admin_client.post(
+        f"/api/v1/bookings/{other_id}/payments/{payment['id']}/reverse",
+        json={"reason": "wrong booking"},
+        headers=csrf_headers(admin_client),
+    )
+    assert cross.status_code == 422
+
+
+# --- Check-in ------------------------------------------------------------------
+
+
+def _checkin(receptionist_client, booking_id, **kw):
+    return receptionist_client.post(
+        f"/api/v1/bookings/{booking_id}/check-in",
+        json=kw,
+        headers=csrf_headers(receptionist_client),
+    )
+
+
+def test_check_in_after_exact_one_night(
+    receptionist_client, admin_client, room_type_id, room_id, guest_id
+) -> None:
+    """Exact one-night CHECK_IN payment satisfies the one-night rule."""
+    booking_id = _booking(receptionist_client, admin_client, room_type_id, room_id, guest_id)
+    _pay(receptionist_client, booking_id, "2500.00", stage="CHECK_IN", mode="UPI")
+    r = _checkin(receptionist_client, booking_id)
+    assert r.status_code == 200, r.text
+    assert r.json()["status"] == "CHECKED_IN"
+
+
+def test_check_in_rejects_insufficient_and_partial(
+    receptionist_client, admin_client, room_type_id, room_id, guest_id
+) -> None:
+    """Underpayment, partial and wrong-stage payments do not allow check-in."""
+    booking_id = _booking(receptionist_client, admin_client, room_type_id, room_id, guest_id)
+    unpaid = _checkin(receptionist_client, booking_id)
+    assert unpaid.status_code == 422
+    _pay(receptionist_client, booking_id, "1500.00", stage="CHECK_IN")
+    partial = _checkin(receptionist_client, booking_id)
+    assert partial.status_code == 422
+    _pay(receptionist_client, booking_id, "1000.00", stage="ADVANCE")
+    wrong_stage_still_short = _checkin(receptionist_client, booking_id)
+    assert wrong_stage_still_short.status_code == 422
+    _pay(receptionist_client, booking_id, "1000.00", stage="CHECK_IN", mode="CARD_POS")
+    ok = _checkin(receptionist_client, booking_id)
+    assert ok.status_code == 200, ok.text
+
+
+def test_check_in_cancelled_and_duplicate(
+    receptionist_client, admin_client, room_type_id, room_id, guest_id
+) -> None:
+    """Cancelled bookings and re-check-ins are rejected."""
+    booking_id = _booking(receptionist_client, admin_client, room_type_id, room_id, guest_id)
+    _pay(receptionist_client, booking_id, "2500.00", stage="CHECK_IN")
+    assert _checkin(receptionist_client, booking_id).status_code == 200
+    duplicate = _checkin(receptionist_client, booking_id)
+    assert duplicate.status_code == 422
+    second_id = _booking(
+        receptionist_client,
+        admin_client,
+        room_type_id,
+        room_id,
+        guest_id,
+        nights=1,
+        with_rate=False,
+        offset=10,
+    )
+    receptionist_client.post(
+        f"/api/v1/bookings/{second_id}/cancel", json={}, headers=csrf_headers(receptionist_client)
+    )
+    cancelled = _checkin(receptionist_client, second_id)
+    assert cancelled.status_code == 422
+
+
+def test_check_in_audited_and_payment_balance(
+    receptionist_client, admin_client, room_type_id, room_id, guest_id, db_session
+) -> None:
+    """GUEST_CHECKED_IN audit row exists (no PII); balance reflects payments."""
+    booking_id = _booking(receptionist_client, admin_client, room_type_id, room_id, guest_id)
+    _pay(receptionist_client, booking_id, "2500.00", stage="CHECK_IN")
+    _checkin(receptionist_client, booking_id)
+    rows = db_session.query(AuditLog).filter(AuditLog.action == "GUEST_CHECKED_IN").all()
+    assert len(rows) == 1
+    blob = str(rows[0].metadata_json)
+    assert "Billing Guest" not in blob
+    folio = admin_client.get(f"/api/v1/bookings/{booking_id}/folio").json()
+    assert folio["balance_due"] == "5000.00"

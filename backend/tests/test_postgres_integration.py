@@ -102,6 +102,8 @@ def test_postgres_schema_contains_auth_tables() -> None:
         "night_rate_snapshot",
         "room_subtotal",
         "total_amount",
+        "checked_in_at",
+        "checked_in_by",
     } <= booking_columns
     folio_columns = {c["name"] for c in inspector.get_columns("folio_entries")}
     assert {
@@ -125,6 +127,7 @@ def test_postgres_schema_contains_auth_tables() -> None:
         "payment_stage",
         "received_by",
         "received_at",
+        "is_reversal",
         "reverses_payment_id",
     } <= payment_columns
     # Exclusion constraint exists when the DB was created by Alembic
@@ -497,3 +500,145 @@ def test_postgres_finance_triggers(pg_client) -> None:
         headers=headers,
     )
     assert rev.status_code == 201, rev.text
+
+
+def _pg_create_booking(pg_client, headers, room_id, guest_id, check_in, check_out):
+    """Create a booking on PG and return its id."""
+    created = pg_client.post(
+        "/api/v1/bookings",
+        json={
+            "guest_id": guest_id,
+            "room_id": room_id,
+            "source": "PHONE",
+            "check_in_date": check_in.isoformat(),
+            "check_out_date": check_out.isoformat(),
+            "number_of_guests": 1,
+        },
+        headers=headers,
+    )
+    assert created.status_code == 201, created.text
+    return created.json()["id"]
+
+
+def test_postgres_payment_flow(pg_client) -> None:
+    """Payment record/overpayment/reversal + check-in on PostgreSQL."""
+    from tests.factories import csrf_headers
+
+    room_id, _rt, guest_id, _actor, check_in, check_out = _pg_booking_setup(pg_client)
+    headers = csrf_headers(pg_client)
+    booking_id = _pg_create_booking(pg_client, headers, room_id, guest_id, check_in, check_out)
+    # Folio is read-only and non-empty after create (initial charge).
+    folio = pg_client.get(f"/api/v1/bookings/{booking_id}/folio").json()
+    assert folio["total_charges"] == "9000.00"
+    # One-night rule uses the stored snapshot (3000.00).
+    denied = pg_client.post(f"/api/v1/bookings/{booking_id}/check-in", json={}, headers=headers)
+    assert denied.status_code == 422
+    # Overpayment beyond the folio: blocked without a reason.
+    early = pg_client.post(
+        f"/api/v1/bookings/{booking_id}/payments",
+        json={"amount": "9000.01", "mode": "CASH", "payment_stage": "ADVANCE"},
+        headers=headers,
+    )
+    assert early.status_code == 422, early.text
+    pay = pg_client.post(
+        f"/api/v1/bookings/{booking_id}/payments",
+        json={"amount": "3000.00", "mode": "UPI", "payment_stage": "CHECK_IN"},
+        headers=headers,
+    )
+    assert pay.status_code == 201, pay.text
+    payment_id = pay.json()["id"]
+    # Underpaid check-in: room subtotal is 9000; only one night collected.
+    assert (
+        pg_client.post(
+            f"/api/v1/bookings/{booking_id}/payments",
+            json={"amount": "3000.00", "mode": "CARD_POS", "payment_stage": "OTHER"},
+            headers=headers,
+        ).status_code
+        == 201
+    )
+    assert pg_client.get(f"/api/v1/bookings/{booking_id}/folio").json()["balance_due"] == "3000.00"
+    assert (
+        pg_client.post(f"/api/v1/bookings/{booking_id}/check-in", json={}, headers=headers).json()[
+            "status"
+        ]
+        == "CHECKED_IN"
+    )
+    # Duplicate check-in is rejected.
+    assert (
+        pg_client.post(
+            f"/api/v1/bookings/{booking_id}/check-in", json={}, headers=headers
+        ).status_code
+        == 422
+    )
+    # ADMIN reversal drives the paid total back down.
+    rev = pg_client.post(
+        f"/api/v1/bookings/{booking_id}/payments/{payment_id}/reverse",
+        json={"reason": "pg test reversal"},
+        headers=headers,
+    )
+    assert rev.status_code == 201, rev.text
+    assert rev.json()["is_reversal"] is True
+    after = pg_client.get(f"/api/v1/bookings/{booking_id}/folio").json()
+    assert after["total_paid"] == "3000.00"
+    # Duplicate reversal is rejected.
+    assert (
+        pg_client.post(
+            f"/api/v1/bookings/{booking_id}/payments/{payment_id}/reverse",
+            json={"reason": "again"},
+            headers=headers,
+        ).status_code
+        == 422
+    )
+
+
+def test_postgres_payment_and_checkin_concurrency(pg_client) -> None:
+    """Racing full payments: at most one succeeds (booking-row lock)."""
+    import threading
+    import uuid as _uuid
+    from decimal import Decimal
+
+    from app.billing.service import OverpaymentError, record_payment
+    from app.core.db import get_session_factory
+    from app.models.booking import Booking
+    from tests.factories import csrf_headers
+
+    room_id, _rt, guest_id, actor_id, check_in, check_out = _pg_booking_setup(pg_client)
+    headers = csrf_headers(pg_client)
+    booking_id = _pg_create_booking(pg_client, headers, room_id, guest_id, check_in, check_out)
+    booking_uuid = _uuid.UUID(booking_id)
+    results: list[str] = []
+    barrier = threading.Barrier(2)
+
+    def attempt() -> None:
+        barrier.wait(timeout=10)
+        db = get_session_factory()()
+        try:
+            booking = db.get(Booking, booking_uuid)
+            record_payment(
+                db,
+                booking,
+                amount=Decimal("9000.00"),
+                mode="CASH",
+                payment_stage="CHECK_IN",
+                reference_note=None,
+                overpayment_reason=None,
+                actor_user_id=actor_id,
+                actor_role="ADMIN",
+            )
+            db.commit()
+            results.append("ok")
+        except OverpaymentError:
+            db.rollback()
+            results.append("overpay")
+        except Exception:
+            db.rollback()
+            results.append("error")
+        finally:
+            db.close()
+
+    threads = [threading.Thread(target=attempt) for _ in range(2)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout=30)
+    assert sorted(results) == ["ok", "overpay"], results

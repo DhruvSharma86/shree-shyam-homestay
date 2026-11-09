@@ -32,9 +32,10 @@ from app.core.db import Base
 
 
 class BookingStatus:
-    """Values for ``bookings.status`` (Phase 3.2 minimal lifecycle)."""
+    """Values for ``bookings.status`` (Phase 4.2 adds check-in)."""
 
     CONFIRMED = "CONFIRMED"
+    CHECKED_IN = "CHECKED_IN"
     CANCELLED = "CANCELLED"
 
 
@@ -100,6 +101,8 @@ class Booking(Base):
     )
     cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     cancellation_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    checked_in_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    checked_in_by: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True)
 
     def __repr__(self) -> str:
         """Return a debug representation without PII."""

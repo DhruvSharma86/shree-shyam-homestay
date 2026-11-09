@@ -92,6 +92,8 @@ Modular monolith backend (FastAPI) + separate Next.js frontend, PostgreSQL datab
 
 **Phase 4.1 status (implemented 2026-11-09, backend only):** one logical folio per booking (append-only `folio_entries` + separate `payments` table created); `ROOM_CHARGE` initialization in the booking transaction; charges/discounts/reversals APIs; derived balance (`Σ entries − Σ payments`, Decimal); PG immutability triggers (SQLite documented limitation); D1 modes `CASH/UPI/CARD_POS`; D4 discounts ADMIN-only; D6 both-role folio read. Payment creation, check-in/checkout, settlement, PDFs, messages and reports are deferred (Phases 4.2–4.4).
 
+**Phase 4.2 status (implemented 2026-11-09, backend only):** `GET /folio` made read-only (side effect corrected); explicit `POST /folio/initialize` (auditable backfill, idempotent); payment recording (`POST /payments`, modes + stages + references), D9 overpayment gate (ADMIN + mandatory reason), ADMIN-only payment reversal (D3); `CHECKED_IN` lifecycle with mandatory one-night CHECK_IN payment (D2, stored snapshot). Checkout settlement, PDFs, messages and reports remain deferred (Phases 4.3–4.4).
+
 ### 3.5 Billing & payments
 | ID | Requirement |
 |---|---|

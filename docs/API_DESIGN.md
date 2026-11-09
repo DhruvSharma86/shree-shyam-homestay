@@ -77,26 +77,27 @@ Duplicate rule: exact normalized phone + case-insensitive whitespace-collapsed n
 | `/bookings` | GET (filters), POST create | GET filters: `status, guest_id, room_id, check_in_from, check_in_to` + pagination; POST creates CONFIRMED booking with rate/tax snapshot |
 | `/bookings/{id}` | GET, PATCH (dates/room/notes/guests — overlap rechecked) | cancelled bookings: PATCH → 422 |
 | `/bookings/{id}/cancel` | POST | idempotent, never deletes; `{reason}` optional |
-| `/bookings/{id}/check-in` | POST | **Deferred** — folio/settlement in Phase 4 |
-| `/bookings/{id}/checkout` | POST | **Deferred** — Phase 4 |
+| `/bookings/{id}/check-in` | POST | ✅ Phase 4.2: CONFIRMED → CHECKED_IN (mandatory one-night CHECK_IN payment, `bookings.checkin`) |
+| `/bookings/{id}/checkout` | POST | **Deferred** — Phase 4.3 |
 | `/bookings/{id}/no-show` | POST | **Deferred** |
 | `/bookings/{id}/guest-link` | GET / POST rotate | **Deferred** — guest portal in Phase 5 |
 
 Create body: `{guest_id, room_id, source: PHONE|WALK_IN (default PHONE), check_in_date, check_out_date, number_of_guests (1–20, default 1), notes?}`. Success `201` returns the booking with `booking_ref`, `nights`, `night_rate_snapshot`, `room_subtotal`, `tax_*_snapshot`, `total_amount`. Overlap → `409 CONFLICT`; invalid dates/past dates/inactive guest/maintenance room/no covering rate/mid-stay rate change → `422 VALIDATION_ERROR`. Date convention: check-in inclusive, check-out exclusive. No folio, token, payment, or portal fields exist in this milestone.
 
-### 3.5 Billing (`billing.*`) — ✅ implemented Phase 4.1 (folio/ledger, read-only payments)
+### 3.5 Billing (`billing.*`) — ✅ implemented Phases 4.1–4.2 (payments + check-in in 4.2)
 | Endpoint | Method | Notes |
 |---|---|---|
-| `/bookings/{id}/folio` | GET | `billing.receipts.read` (both roles, D6): entries + `total_charges/total_paid/balance_due`; performs backfill-by-demand for pre-4.1 bookings |
+| `/bookings/{id}/folio` | GET | `billing.receipts.read` (both roles, D6): entries + `total_charges/total_paid/balance_due`; **read-only since Phase 4.2** (no writes, no audit rows) |
+| `/bookings/{id}/folio/initialize` | POST | `billing.charges.write`, CSRF: idempotent, auditable initial-charge backfill for pre-4.1 bookings (never for cancelled ones) |
 | `/bookings/{id}/folio/charges` | POST | `billing.charges.write` (both roles), CSRF; amount computed server-side (`quantity × unit_amount`) |
 | `/bookings/{id}/folio/discounts` | POST | `billing.discounts.write` (**ADMIN only**, D4), CSRF; `reason` mandatory; negative-folio rejected (422) |
-| `/bookings/{id}/folio/reversals` | POST | `billing.charges.write` (both roles), CSRF; `reason` mandatory; already-reversed/reversal-of-reversal → 422 (D3: payment reversals are ADMIN-only but not implemented yet) |
-| `/bookings/{id}/payments` | GET (paginated) | `billing.receipts.read` (both roles); empty until Phase 4.2 writes |
-| `/bookings/{id}/payments` | POST | **Deferred to Phase 4.2** (D9 overpayment rule applies there) |
-| `/bookings/{id}/payments/{id}/reverse` | POST | **Deferred to Phase 4.2** |
+| `/bookings/{id}/folio/reversals` | POST | `billing.charges.write` (both roles), CSRF; `reason` mandatory; already-reversed/reversal-of-reversal → 422 |
+| `/bookings/{id}/payments` | POST | `billing.payments.write` (both roles), CSRF: `{amount>0, mode CASH|UPI|CARD_POS, payment_stage ADVANCE|CHECK_IN|CHECKOUT|OTHER, reference_note?, overpayment_reason?}`; overpay blocked unless ADMIN + reason (D9) |
+| `/bookings/{id}/payments/{payment_id}/reverse` | POST | `billing.payments.write` **plus ADMIN role gate** (D3), CSRF; `{reason}` mandatory; dup/cross/self → 422 |
+| `/bookings/{id}/payments` | GET (paginated) | `billing.receipts.read` (both roles) |
 | `/bookings/{id}/receipts` | GET, POST (generate) | **Deferred to Phase 4.3** (ReportLab) |
 
-Financial writes and their audit rows commit in the same transaction; audit metadata carries entry/payment ids, amounts and reasons only (no guest PII). Balances are always derived (`Σ entries − Σ payments`) with `Decimal`; no stored running total.
+Financial writes and their audit rows commit in the same transaction; audit metadata carries entry/payment ids, amounts, modes, stages and reasons only (no guest PII). Balances are always derived with `Decimal` (total_paid is net of reversal records); no stored running total.
 
 ### 3.6 Reports & audit (ADMIN only)
 | Endpoint | Method | Permission |
@@ -150,6 +151,13 @@ Financial writes and their audit rows commit in the same transaction; audit meta
 - **Discounts:** ADMIN-only (`billing.discounts.write`, D4); `reason` mandatory; blocked (422) when they would make `Σ entries < 0`.
 - **Reversals:** `REVERSAL = −original.amount` with `reverses_entry_id` + reason; original untouched; repeated/reversal-of-reversal → `422`.
 - **Phase 4.2/4.3 deferred:** payment writing, check-in/checkout, settlement, PDFs, overpayment rule enforcement (D9 applies there).
+
+## 5c. Phase 4.2 payment & check-in behaviour (implemented)
+- **Read-only folio GET:** `GET /folio` never writes (verified by ledger/audit count assertions). Backfill moved to explicit `POST /folio/initialize`.
+- **Payments:** staff-recorded `CASH|UPI|CARD_POS` with `ADVANCE|CHECK_IN|CHECKOUT|OTHER` stages; validation of mode/stage in the router (Pydantic literals — unknown values → 422), amount > 0, optional `reference_note` (UPI UTR/POS ref). Balance is derived under a **booking-row `SELECT … FOR UPDATE` lock** inside the transaction, so two racing payments cannot both overpay (PG test asserts exactly one succeeds).
+- **Overpayment (D9):** when `total_paid + new > total_charges`, RECEPTIONIST → 422 always; ADMIN without a non-empty `overpayment_reason` → 422; ADMIN with reason → allowed and `OVERPAYMENT_AUTHORIZED` is audited with the reason.
+- **Reversal (D3):** ADMIN-only (role gate on `billing.payments.write`); original row untouched; new row (`is_reversal`, positive amount, `reverses_payment_id`, reason in `reference_note`); duplicate/cross-booking/self-reversal → 422; net paid total recalculates immediately.
+- **Check-in:** `CONFIRMED → CHECKED_IN` under the same booking lock; cancelled/already-checked-in → 422; timestamp + actor stored (`checked_in_at`, `checked_in_by`); `GUEST_CHECKED_IN` audit (amounts only); requires **net CHECK_IN-stage payments ≥ `night_rate_snapshot`** (D2) — snapshot, not today's rate, never charges/discounts; wrong-stage amounts don't count. `CHECKED_OUT`/settlement remain Phase 4.3.
 
 ## 6. Non-goals
 - No GraphQL, no websockets, no webhooks (v1). No public API for third parties.

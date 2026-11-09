@@ -61,6 +61,12 @@ class BookingCancel(BaseModel):
     reason: str | None = None
 
 
+class CheckInRequest(BaseModel):
+    """Check-in payload (note optional — early check-in policy TBD)."""
+
+    note: str | None = None
+
+
 class BookingListResponse(BaseModel):
     """Paginated booking list."""
 

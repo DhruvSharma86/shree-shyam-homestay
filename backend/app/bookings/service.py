@@ -21,7 +21,12 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session as DBSession
 
 from app.auth.service import write_audit
-from app.billing.service import adjust_initial_charge_for_resnapshot, ensure_initial_charge
+from app.billing.service import (
+    adjust_initial_charge_for_resnapshot,
+    ensure_initial_charge,
+    lock_booking,
+    stage_paid,
+)
 from app.models.booking import Booking, BookingSource, BookingStatus
 from app.models.guest import Guest
 from app.models.room import Room, RoomOperationalStatus
@@ -308,6 +313,48 @@ def update_booking(
         metadata={"fields": sorted(changed)},
     )
     return booking
+
+
+def check_in_booking(db: DBSession, booking: Booking, *, actor_user_id: uuid.UUID) -> Booking:
+    """Check in a CONFIRMED booking (mandatory one-night payment, D2).
+
+    Locks the booking row, verifies the booking is CONFIRMED, computes
+    net CHECK_IN-stage payments against the stored
+    ``night_rate_snapshot`` (never today's rate, never charges/
+    discounts), and transitions to ``CHECKED_IN`` in the caller's
+    transaction. Duplicate and cancelled check-ins are rejected.
+    """
+    locked = lock_booking(db, booking.id)
+    if locked is None:
+        raise ValueError("Booking not found.")
+    if locked.status == BookingStatus.CANCELLED:
+        raise ValueError("A cancelled booking cannot be checked in.")
+    if locked.status != BookingStatus.CONFIRMED:
+        raise ValueError("Only CONFIRMED bookings can be checked in.")
+    required = locked.night_rate_snapshot
+    paid = stage_paid(db, locked.id, "CHECK_IN")
+    if paid < required:
+        raise ValueError(
+            f"One-night payment of {required} required at check-in; "
+            f"CHECK_IN-stage payments total {paid}."
+        )
+    locked.status = BookingStatus.CHECKED_IN
+    locked.checked_in_at = datetime.now(UTC)
+    locked.checked_in_by = actor_user_id
+    locked.updated_by = actor_user_id
+    write_audit(
+        db,
+        action="GUEST_CHECKED_IN",
+        resource_type="booking",
+        resource_id=str(locked.id),
+        actor_user_id=actor_user_id,
+        metadata={
+            "booking_id": str(locked.id),
+            "required_amount": str(required),
+            "checkin_paid": str(paid),
+        },
+    )
+    return locked
 
 
 def cancel_booking(

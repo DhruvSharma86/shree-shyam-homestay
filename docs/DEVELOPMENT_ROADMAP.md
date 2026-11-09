@@ -1,7 +1,7 @@
 # Development Roadmap — Shree Shyam Home Stay
 
-> **Current status: Phase 4.1 (Billing architecture & folio foundation, backend) — ✅ complete.**
-> Phases 1–3 are closed and PostgreSQL-verified. Phase 4.1 delivered: one logical folio per booking (append-only `folio_entries` + read-only `payments`), atomic initial ROOM_CHARGE, charges/discounts/reversals APIs, derived balance, PG immutability triggers, RBAC + audit — backend tests green; PostgreSQL verified via GitHub Actions (see CI). No payment writing, check-in/checkout, settlement, receipts, frontend or reports in this milestone.
+> **Current status: Phase 4.2 (Payment recording & check-in management, backend) — ✅ complete.**
+> Phases 1–3 are closed and PostgreSQL-verified. Phase 4.1 delivered the append-only folio/ledger foundation; Phase 4.2 adds read-only folio reads with explicit backfill, payment recording with D9 overpayment authorization, ADMIN-only payment reversals, and the `CHECKED_IN` lifecycle with the mandatory one-night CHECK_IN payment rule (stored snapshot), all with booking-row locks and PG trigger immutability — backend tests green; PostgreSQL verified via GitHub Actions (see CI). No checkout settlement, PDFs, frontend or reports in this milestone.
 
 ## Phase 0 — Documentation & design ✅ (this milestone)
 - [x] README, SRS, Architecture, Database, RBAC, Booking/Billing workflows, Guest portal, API design, Roadmap
@@ -70,6 +70,14 @@
 - [x] **168 tests passing, 8 skipped** (SQLite; 2 PG billing tests skip locally, enforced in CI); Alembic upgrade/downgrade clean on SQLite; PostgreSQL tests run in CI with fail-if-skip guard
 - **Exit criteria met (backend):** folio view with derived balance, atomic initial charge, append-only ledger, reversible charges, immutable PG store, RBAC/audit. No payment writing, check-in/out, settlement, receipts, frontend or reports.
 - Next: Phase 4.2 (payment recording) — do not start automatically.
+
+#### Phase 4.2 — Payment recording & check-in management ✅ (complete, 2026-11-09)
+- [x] `GET /folio` made read-only (Phase 4.1 side effect corrected, verified by ledger/audit count tests); explicit idempotent `POST /folio/initialize` as the auditable backfill (never for cancelled bookings)
+- [x] Payment recording: `POST /payments` (CASH/UPI/CARD_POS × ADVANCE/CHECK_IN/CHECKOUT/OTHER, optional reference, server-validated mode/stage), D9 overpayment gate (ADMIN + mandatory reason, `OVERPAYMENT_AUTHORIZED` audited), ADMIN-only payment reversal (D3) as linked reversal rows with net paid recomputation; duplicate/cross/self reversals → 422
+- [x] `CHECKED_IN` lifecycle (`checked_in_at/by`, migration `a8b9c0d1e2f3`) with mandatory D2 one-night CHECK_IN rule against the stored `night_rate_snapshot` (wrong-stage/partial → 422), booking-row locks for payment/check-in concurrency (PG test: one of two racing full payments wins)
+- [x] **179 tests passing, 10 skipped** (SQLite; PG payment/concurrency tests skip locally, enforced in CI); Alembic upgrade/downgrade clean on SQLite; PostgreSQL tests run in CI with fail-if-skip guard
+- **Exit criteria met (backend):** payments recorded and reversed (ADMIN), overpayment gated, check-in enforced, GET read-only, RBAC/audit. No checkout settlement, PDFs, messages, frontend or reports.
+- Next: Phase 4.3 (settlement, checkout and receipts) — do not start automatically.
 
 - Folio engine (charges, discounts with limits, reversals), payments (advance/check-in/checkout, cash/UPI/card), transactions
 - Tax computation from settings; ReportLab PDF receipts (payment + final)

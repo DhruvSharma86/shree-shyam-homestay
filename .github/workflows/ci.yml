@@ -77,13 +77,13 @@ jobs:
           assert gneeded <= gcols, f"guests table incomplete: {gneeded - gcols}"
           assert "ix_guests_phone_name_active" in {i["name"] for i in inspector.get_indexes("guests")}
           bcols = {c["name"] for c in inspector.get_columns("bookings")}
-          bneeded = {"id", "booking_ref", "guest_id", "room_id", "status", "check_in_date", "check_out_date", "nights", "night_rate_snapshot", "room_subtotal", "total_amount"}
+          bneeded = {"id", "booking_ref", "guest_id", "room_id", "status", "check_in_date", "check_out_date", "nights", "night_rate_snapshot", "room_subtotal", "total_amount", "checked_in_at", "checked_in_by"}
           assert bneeded <= bcols, f"bookings table incomplete: {bneeded - bcols}"
           fcols = {c["name"] for c in inspector.get_columns("folio_entries")}
           fneeded = {"id", "booking_id", "entry_type", "description", "quantity", "amount", "is_initial", "created_by", "created_at"}
           assert fneeded <= fcols, f"folio_entries table incomplete: {fneeded - fcols}"
           pcols = {c["name"] for c in inspector.get_columns("payments")}
-          pneeded = {"id", "booking_id", "amount", "mode", "payment_stage", "received_by", "received_at", "reverses_payment_id"}
+          pneeded = {"id", "booking_id", "amount", "mode", "payment_stage", "received_by", "received_at", "is_reversal", "reverses_payment_id"}
           assert pneeded <= pcols, f"payments table incomplete: {pneeded - pcols}"
           with get_engine().connect() as conn:
               assert conn.execute(text("SELECT 1")).scalar() == 1

@@ -15,9 +15,11 @@ from datetime import datetime
 from decimal import Decimal
 
 from sqlalchemy import (
+    Boolean,
     CheckConstraint,
     DateTime,
     ForeignKey,
+    Index,
     Numeric,
     String,
     Uuid,
@@ -49,7 +51,20 @@ class Payment(Base):
     """One immutable payment received against a booking's folio."""
 
     __tablename__ = "payments"
-    __table_args__ = (CheckConstraint("amount > 0", name="ck_payments_positive"),)
+    __table_args__ = (
+        CheckConstraint("amount > 0", name="ck_payments_positive"),
+        CheckConstraint("mode IN ('CASH', 'UPI', 'CARD_POS')", name="ck_payments_mode"),
+        CheckConstraint(
+            "payment_stage IN ('ADVANCE', 'CHECK_IN', 'CHECKOUT', 'OTHER')",
+            name="ck_payments_stage",
+        ),
+        CheckConstraint(
+            "(is_reversal AND reverses_payment_id IS NOT NULL) "
+            "OR (NOT is_reversal AND reverses_payment_id IS NULL)",
+            name="ck_payments_reversal_link",
+        ),
+        Index("ix_payments_booking_stage", "booking_id", "payment_stage"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     booking_id: Mapped[uuid.UUID] = mapped_column(
@@ -66,6 +81,7 @@ class Payment(Base):
     reverses_payment_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("payments.id", ondelete="RESTRICT"), nullable=True, index=True
     )
+    is_reversal: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     created_by: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()

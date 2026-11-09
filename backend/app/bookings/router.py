@@ -18,6 +18,7 @@ from app.bookings.schemas import (
     BookingListResponse,
     BookingPatch,
     BookingResponse,
+    CheckInRequest,
 )
 from app.bookings.service import (
     BookingOverlapError,
@@ -26,6 +27,7 @@ from app.bookings.service import (
     RoomUnavailableError,
     cancel_booking,
     check_availability,
+    check_in_booking,
     create_booking,
     update_booking,
 )
@@ -262,6 +264,34 @@ def cancel_booking_route(
     updated = cancel_booking(
         db, row, reason=payload.reason if payload else None, actor_user_id=actor.id
     )
+    db.commit()
+    db.refresh(updated)
+    return _serialize(updated)
+
+
+@router.post("/{booking_id}/check-in", response_model=BookingResponse)
+def check_in_booking_route(
+    booking_id: uuid.UUID,
+    payload: CheckInRequest | None = None,
+    request: Request = None,  # type: ignore[assignment]
+    db: DBSession = Depends(get_db),
+    actor: User = Depends(require_permission(Permission.BOOKINGS_CHECKIN)),
+) -> BookingResponse:
+    """Check in a CONFIRMED booking (mandatory one-night CHECK_IN payment)."""
+    verify_csrf(request)  # type: ignore[arg-type]
+    row = db.get(Booking, booking_id)
+    if row is None:
+        raise ApiError(404, "NOT_FOUND", "Booking not found.")
+    try:
+        updated = check_in_booking(db, row, actor_user_id=actor.id)
+    except (
+        BookingOverlapError,
+        RoomUnavailableError,
+        GuestInactiveError,
+        RateUnavailableError,
+        ValueError,
+    ) as exc:
+        raise _map_service_error(exc) from None
     db.commit()
     db.refresh(updated)
     return _serialize(updated)

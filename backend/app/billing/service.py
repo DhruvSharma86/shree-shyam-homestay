@@ -19,6 +19,7 @@ Discounts/reversals are blocked when they would drive the folio total
 """
 
 import uuid
+from datetime import UTC, datetime
 from decimal import ROUND_HALF_UP, Decimal
 
 from sqlalchemy import func, select
@@ -28,7 +29,7 @@ from sqlalchemy.orm import Session as DBSession
 from app.auth.service import write_audit
 from app.models.booking import Booking
 from app.models.folio_entry import FolioEntry, FolioEntryType
-from app.models.payment import Payment
+from app.models.payment import Payment, PaymentMode, PaymentStage
 
 
 class FolioClosedError(ValueError):
@@ -43,6 +44,10 @@ class NegativeBalanceError(ValueError):
     """Raised when a discount/reversal would make the folio total negative."""
 
 
+class OverpaymentError(ValueError):
+    """Raised when a payment would overpay without an authorized exception."""
+
+
 def _money(value: Decimal) -> Decimal:
     """Quantize a money amount to 2dp (project convention)."""
     return value.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
@@ -51,8 +56,9 @@ def _money(value: Decimal) -> Decimal:
 def folio_totals(db: DBSession, booking_id: uuid.UUID) -> tuple[Decimal, Decimal, Decimal]:
     """Return (total_charges, total_paid, balance_due) for a booking.
 
-    ``total_charges = SUM(folio_entries.amount)``,
-    ``total_paid = SUM(payments.amount)``, balance is the difference.
+    ``total_charges = SUM(folio_entries.amount)`` and
+    ``total_paid = net collected payments`` (reversal rows offset the
+    payments they reverse) — ``balance_due`` is the difference.
     Empty sums are Decimal zero, never None.
     """
     charges = db.scalar(
@@ -60,14 +66,36 @@ def folio_totals(db: DBSession, booking_id: uuid.UUID) -> tuple[Decimal, Decimal
             FolioEntry.booking_id == booking_id
         )
     )
-    paid = db.scalar(
-        select(func.coalesce(func.sum(Payment.amount), Decimal(0))).where(
-            Payment.booking_id == booking_id
-        )
-    )
+    total_paid = net_paid(db, booking_id)
     total_charges = Decimal(charges) if charges is not None else Decimal(0)
-    total_paid = Decimal(paid) if paid is not None else Decimal(0)
     return total_charges, total_paid, total_charges - total_paid
+
+
+def net_paid(db: DBSession, booking_id: uuid.UUID) -> Decimal:
+    """Net collected amount: payments minus their reversal offsets."""
+    net = Decimal(0)
+    for amount, is_reversal in db.execute(
+        select(Payment.amount, Payment.is_reversal).where(Payment.booking_id == booking_id)
+    ).all():
+        net += -amount if is_reversal else amount
+    return _money(net)
+
+
+def stage_paid(db: DBSession, booking_id: uuid.UUID, stage: str) -> Decimal:
+    """Net amount collected at one payment stage (check-in rule input)."""
+    net = Decimal(0)
+    for amount, is_reversal in db.execute(
+        select(Payment.amount, Payment.is_reversal).where(
+            Payment.booking_id == booking_id, Payment.payment_stage == stage
+        )
+    ).all():
+        net += -amount if is_reversal else amount
+    return _money(net)
+
+
+def lock_booking(db: DBSession, booking_id: uuid.UUID) -> Booking | None:
+    """Lock the booking row (PG: real lock; SQLite: serialised writes)."""
+    return db.scalar(select(Booking).where(Booking.id == booking_id).with_for_update())
 
 
 def ensure_initial_charge(
@@ -338,3 +366,154 @@ def reverse_entry(
         },
     )
     return entry
+
+
+class PaymentReversalError(ValueError):
+    """Raised for a payment reversal that cannot legally reverse its target."""
+
+
+def record_payment(
+    db: DBSession,
+    booking: Booking,
+    *,
+    amount: Decimal,
+    mode: str,
+    payment_stage: str,
+    reference_note: str | None,
+    overpayment_reason: str | None,
+    actor_user_id: uuid.UUID,
+    actor_role: str,
+) -> Payment:
+    """Record an append-only payment against a booking.
+
+    Amount/mode/stage are validated server-side; the outstanding balance
+    is computed from the ledger under a booking-row lock. Overpayment
+    is blocked by default; an ADMIN with a mandatory reason may
+    authorize it (audited). Payment rows are never updated/deleted.
+    """
+    _require_open_folio(booking)
+    value = amount if isinstance(amount, Decimal) else Decimal(str(amount))
+    value = _money(value)
+    if value <= 0:
+        raise ValueError("payment amount must be greater than zero.")
+    if mode not in (PaymentMode.CASH, PaymentMode.UPI, PaymentMode.CARD_POS):
+        raise ValueError("mode must be CASH, UPI or CARD_POS.")
+    if payment_stage not in (
+        PaymentStage.ADVANCE,
+        PaymentStage.CHECK_IN,
+        PaymentStage.CHECKOUT,
+        PaymentStage.OTHER,
+    ):
+        raise ValueError("payment_stage must be ADVANCE, CHECK_IN, CHECKOUT or OTHER.")
+    lock_booking(db, booking.id)
+    total_charges, total_paid, _ = folio_totals(db, booking.id)
+    excess = (total_paid + value) - total_charges
+    authorized = False
+    if excess > 0:
+        if actor_role == "ADMIN" and overpayment_reason:
+            authorized = True
+        else:
+            raise OverpaymentError(
+                f"Payment of {value} exceeds the outstanding balance {total_charges - total_paid}."
+            )
+    now = datetime.now(UTC)
+    payment = Payment(
+        booking_id=booking.id,
+        amount=value,
+        mode=mode,
+        payment_stage=payment_stage,
+        reference_note=reference_note,
+        received_by=actor_user_id,
+        received_at=now,
+        is_reversal=False,
+        created_by=actor_user_id,
+    )
+    db.add(payment)
+    db.flush()
+    write_audit(
+        db,
+        action="PAYMENT_RECORDED",
+        resource_type="booking",
+        resource_id=str(booking.id),
+        actor_user_id=actor_user_id,
+        metadata={
+            "payment_id": str(payment.id),
+            "booking_id": str(booking.id),
+            "amount": str(value),
+            "mode": mode,
+            "stage": payment_stage,
+        },
+    )
+    if authorized:
+        write_audit(
+            db,
+            action="OVERPAYMENT_AUTHORIZED",
+            resource_type="booking",
+            resource_id=str(booking.id),
+            actor_user_id=actor_user_id,
+            metadata={
+                "payment_id": str(payment.id),
+                "booking_id": str(booking.id),
+                "amount": str(value),
+                "reason": overpayment_reason,
+            },
+        )
+    return payment
+
+
+def reverse_payment(
+    db: DBSession,
+    booking: Booking,
+    original: Payment,
+    *,
+    reason: str,
+    actor_user_id: uuid.UUID,
+) -> Payment:
+    """Reverse a payment as a linked reversal record (D3: ADMIN-only).
+
+    The original row is untouched; the reversal stores the same amount
+    with ``is_reversal=True`` and ``reverses_payment_id`` set, so the
+    net paid total recalculates correctly. Duplicate reversals,
+    reversal-of-reversal and cross-booking targets are rejected.
+    """
+    _require_open_folio(booking)
+    if original.booking_id != booking.id:
+        raise ValueError("Payment does not belong to this booking.")
+    if original.is_reversal:
+        raise PaymentReversalError("A reversal payment cannot itself be reversed.")
+    already = db.scalar(
+        select(Payment).where(
+            Payment.reverses_payment_id == original.id, Payment.is_reversal.is_(True)
+        )
+    )
+    if already is not None:
+        raise PaymentReversalError("Payment has already been reversed.")
+    now = datetime.now(UTC)
+    reversal = Payment(
+        booking_id=booking.id,
+        amount=_money(original.amount),
+        mode=original.mode,
+        payment_stage=original.payment_stage,
+        reference_note=reason,
+        received_by=actor_user_id,
+        received_at=now,
+        reverses_payment_id=original.id,
+        is_reversal=True,
+        created_by=actor_user_id,
+    )
+    db.add(reversal)
+    db.flush()
+    write_audit(
+        db,
+        action="PAYMENT_REVERSED",
+        resource_type="booking",
+        resource_id=str(booking.id),
+        actor_user_id=actor_user_id,
+        metadata={
+            "payment_id": str(reversal.id),
+            "booking_id": str(booking.id),
+            "amount": str(reversal.amount),
+            "reason": reason,
+        },
+    )
+    return reversal

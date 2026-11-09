@@ -56,6 +56,22 @@ class ReversalCreate(BaseModel):
     reason: str = Field(min_length=1, max_length=1000)
 
 
+class PaymentCreate(BaseModel):
+    """Record a staff-collected payment (Phase 4.2)."""
+
+    amount: Decimal = Field(gt=0)
+    mode: str = "CASH"
+    payment_stage: str = "OTHER"
+    reference_note: str | None = None
+    overpayment_reason: str | None = None
+
+
+class PaymentReversalCreate(BaseModel):
+    """Reverse a payment (ADMIN-only, reason mandatory)."""
+
+    reason: str = Field(min_length=1, max_length=1000)
+
+
 class PaymentResponse(BaseModel):
     """One payment record (read-only in Phase 4.1)."""
 
@@ -65,6 +81,7 @@ class PaymentResponse(BaseModel):
     mode: str
     payment_stage: str
     reference_note: str | None = None
+    is_reversal: bool
     reverses_payment_id: uuid.UUID | None = None
     received_at: str
 
