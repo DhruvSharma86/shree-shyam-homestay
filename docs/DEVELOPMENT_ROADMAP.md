@@ -174,6 +174,13 @@
 - **Exit criteria met:** operational posture documented + guarded; verdict — **ready for controlled staging deployment** (production requires prod env, PG restore drill, lockfile/scanner follow-ups — see checklist).
 - Phase 5.3 (guest experience hardening & operational readiness) is **closed**. Next: Phase 6 (reports/audit viewer/public website) — do not start automatically.
 
+#### Pre-Phase 6 Milestone S1 — Managed hosting audit ✅ (complete, 2026-11-09)
+- [x] Audited backend (Python 3.11+, `uvicorn app.main:app`, env-driven config, no filesystem needs), frontend (Next 16.4.5 needs a persistent Node server, public build-time env, no localhost hardcode), and PostgreSQL (`btree_gist` + exclusion constraints + immutability triggers)
+- [x] Compared Render (A) / Railway (B) / Vercel+Paas (C) on compatibility, setup, persistence, HTTPS, env, GitHub, logs, backups, cookies, security, scale — estimates labelled unverified; Render `btree_gist` supported per official docs, Railway extension support unconfirmed (HIGH risk)
+- [x] Blockers (no start manifest, no backend lockfile, extension proof, cookie topology, Node pin, build-time env, body limit, free-tier limits) + recommended **Option A (Render)** with an exact S1→S2 checklist split into OpenCode vs owner tasks
+- [x] `docs/STAGING_DEPLOYMENT_PLAN.md` created; roadmap updated. No deployment, no cloud resources, no business-logic changes.
+- Pre-Phase 6 staging validation is **started (planning)**; Milestone S1 complete. Phase 6 (reports/audit viewer/public website) — **not started**.
+
 ## Phase 6 — Reports, audit viewer, public website
 - Admin financial/occupancy reports; audit-log viewer
 - Public marketing site (Home/About/Rooms/Gallery/Facilities/Restaurant/Attractions/Contact, Maps embed, tel: links) — **no booking functionality**
