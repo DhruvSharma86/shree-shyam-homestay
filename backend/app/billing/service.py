@@ -94,8 +94,16 @@ def stage_paid(db: DBSession, booking_id: uuid.UUID, stage: str) -> Decimal:
 
 
 def lock_booking(db: DBSession, booking_id: uuid.UUID) -> Booking | None:
-    """Lock the booking row (PG: real lock; SQLite: serialised writes)."""
-    return db.scalar(select(Booking).where(Booking.id == booking_id).with_for_update())
+    """Lock the booking row (PG: real lock; SQLite: serialised writes).
+
+    ``populate_existing=True`` is essential: without it, a row already in
+    the session's identity map would be returned with stale columns after
+    another transaction commits, defeating the wait-then-recheck pattern.
+    """
+    return db.scalar(
+        select(Booking).where(Booking.id == booking_id).with_for_update(),
+        execution_options={"populate_existing": True},
+    )
 
 
 def ensure_initial_charge(
