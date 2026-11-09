@@ -444,7 +444,7 @@ def test_postgres_folio_flow(pg_client) -> None:
 def test_postgres_finance_triggers(pg_client) -> None:
     """Append-only triggers reject UPDATE/DELETE but allow INSERT."""
     import pytest
-    from sqlalchemy.exc import IntegrityError
+    from sqlalchemy.exc import DBAPIError
 
     from app.core.db import get_engine
     from tests.factories import csrf_headers
@@ -480,12 +480,14 @@ def test_postgres_finance_triggers(pg_client) -> None:
         assert "trg_folio_entries_immutable" in names, names
         assert "trg_payments_immutable" in names, names
     entry_id = pg_client.get(f"/api/v1/bookings/{booking_id}/folio").json()["entries"][0]["id"]
-    with pytest.raises(IntegrityError):
+    # NOTE: PG raises P0001 (raise_exception) which SQLAlchemy surfaces as
+    # InternalError (a DBAPIError), not IntegrityError.
+    with pytest.raises(DBAPIError):
         with engine.begin() as conn:
             conn.execute(
                 text("UPDATE folio_entries SET amount = 1 WHERE id = :id"), {"id": entry_id}
             )
-    with pytest.raises(IntegrityError):
+    with pytest.raises(DBAPIError):
         with engine.begin() as conn:
             conn.execute(text("DELETE FROM folio_entries WHERE id = :id"), {"id": entry_id})
     # INSERT still allowed: API reversal succeeds afterwards.
