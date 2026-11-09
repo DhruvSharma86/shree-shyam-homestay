@@ -61,6 +61,20 @@ class BookingCancel(BaseModel):
     reason: str | None = None
 
 
+class CheckInResponse(BaseModel):
+    """Check-in transition plus the one-time portal access token.
+
+    The raw token is shown exactly once (here, for staff relay to the
+    guest) and is never persisted or returned by any other endpoint.
+    """
+
+    booking_id: uuid.UUID
+    booking_ref: str
+    status: str
+    checked_in_at: str | None = None
+    portal_access_token: str
+
+
 class CheckoutResponse(BaseModel):
     """Checkout settlement summary (status transition + receipt handle)."""
 

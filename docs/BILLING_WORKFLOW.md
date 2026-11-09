@@ -69,7 +69,7 @@ Balance due = Σ(folio_entries.amount) − Σ(payments.amount)
 
 ## 8. Receipts (PDF) — ✅ Implemented (Phase 4.3, ReportLab)
 - Contents: hotel info (from DB, only configured fields), booking ref, guest name (primary only), room, dates, folio lines (with reversals marked), tax **configuration** note (no computed tax), payments, payment reversals (shown as credits, "not new money"), totals, checkout timestamp, receipt ref. Amounts use `INR` grouping with 2dp Decimals straight from the ledger.
-- `FINAL` receipt: issued at checkout; bytes stored in PostgreSQL with a SHA-256 `content_hash` (immutable snapshot — later config edits don't change it). One FINAL per booking (partial unique).
+- `FINAL` receipt: issued at checkout; bytes stored in PostgreSQL with a SHA-256 `content_hash` (immutable snapshot — later config edits don't change it). One FINAL per booking (partial unique). **Guest access (Phase 5.1):** the final receipt is served to the guest via the Phase 5.1 portal (`GET /api/v1/guest-portal/{token}/receipt[...]`) within its 24h-after-checkout window, same stored bytes, `no-store` cache.
 - `PAYMENT` receipt: reserved kind; not issued.
 - Staff/audited downloads at `GET /receipt` (metadata) and `GET /receipt/download` (PDF, `no-store`); the guest copy arrives later via the portal (Phase 5).
 

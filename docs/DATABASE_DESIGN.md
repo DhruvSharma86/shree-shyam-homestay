@@ -167,6 +167,9 @@ Positive = charge; negative = discount/reversal (keeps balance math simple: bala
 
 **Checkout columns (Phase 4.3, same migration):** `bookings.checked_out_at TIMESTAMPTZ NULL`, `bookings.checked_out_by UUID NULL`; `status` widens to include `CHECKED_OUT`. Receipt rows and the transition commit atomically — a failed PDF render leaves no receipt row and no status change.
 
+### 2.17 `guest_portal_tokens` — ✅ implemented (Phase 5.1, migration `d1e2f3a4b5c6`)
+`id UUID PK`, `booking_id FK → bookings RESTRICT INDEXED`, `token_hash VARCHAR(64) UNIQUE INDEXED` (**SHA-256 hex only — the raw token is never stored/logged/audited**), `created_at TIMESTAMPTZ`, `revoked_at TIMESTAMPTZ NULL`, `last_accessed_at TIMESTAMPTZ NULL`. Partial unique `ux_guest_portal_tokens_booking_active (booking_id) WHERE revoked_at IS NULL` guarantees at most one active token per booking even under concurrent rotation (service rotation revokes before inserting; revocation is permanent — `revoked_at` is never cleared). Expiry is **lifecycle-derived**, never stored: `checked_out_at + 24h` once `CHECKED_OUT`, open-ended while `CONFIRMED`/`CHECKED_IN`; cancelled bookings are always rejected at resolution.
+
 ### 2.16 `public_content`
 `id`, `page VARCHAR(32)` ('home','about','rooms','gallery','facilities','restaurant','attractions','contact'), `title`, `body`, `image_urls JSONB`, `sort_order`, `updated_at`. Seeded empty; content is TBD.
 

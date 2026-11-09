@@ -19,6 +19,7 @@ from app.bookings.schemas import (
     BookingPatch,
     BookingResponse,
     CheckInRequest,
+    CheckInResponse,
     CheckoutResponse,
 )
 from app.bookings.service import (
@@ -280,26 +281,36 @@ def cancel_booking_route(
     return _serialize(updated)
 
 
-@router.post("/{booking_id}/check-in", response_model=BookingResponse)
+@router.post("/{booking_id}/check-in", response_model=CheckInResponse)
 def check_in_booking_route(
     booking_id: uuid.UUID,
     payload: CheckInRequest | None = None,
     request: Request = None,  # type: ignore[assignment]
     db: DBSession = Depends(get_db),
     actor: User = Depends(require_permission(Permission.BOOKINGS_CHECKIN)),
-) -> BookingResponse:
-    """Check in a CONFIRMED booking (mandatory one-night CHECK_IN payment)."""
+) -> CheckInResponse:
+    """Check in a CONFIRMED booking (mandatory one-night CHECK_IN payment).
+
+    Issues the guest portal token transactionally with check-in; the raw
+    token is returned exactly once here (staff relay it to the guest).
+    """
     verify_csrf(request)  # type: ignore[arg-type]
     row = db.get(Booking, booking_id)
     if row is None:
         raise ApiError(404, "NOT_FOUND", "Booking not found.")
     try:
-        updated = check_in_booking(db, row, actor_user_id=actor.id)
+        updated, portal_raw = check_in_booking(db, row, actor_user_id=actor.id)
     except BOOKING_ERRORS as exc:
         raise _map_service_error(exc) from None
     db.commit()
     db.refresh(updated)
-    return _serialize(updated)
+    return CheckInResponse(
+        booking_id=updated.id,
+        booking_ref=updated.booking_ref,
+        status=updated.status,
+        checked_in_at=updated.checked_in_at.isoformat() if updated.checked_in_at else None,
+        portal_access_token=portal_raw,
+    )
 
 
 @router.post("/{booking_id}/check-out", response_model=CheckoutResponse)

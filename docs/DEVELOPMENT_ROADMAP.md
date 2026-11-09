@@ -1,7 +1,7 @@
 # Development Roadmap — Shree Shyam Home Stay
 
-> **Current status: Phase 4.4 (Financial reporting & reconciliation, backend) — ✅ complete.**
-> Phases 1–3 are closed and PostgreSQL-verified. Phase 4.3 closed the checkout loop with immutable FINAL receipts; Phase 4.4 adds ADMIN read-only reporting — financial summary, collections, payment methods, outstanding/credits (live snapshot), period reconciliation, reversals detail, booking status counts and occupancy — all derived from the ledger with Decimal math, UTC date bounds, CSV exports for two reports, and PostgreSQL receipts-immutability triggers — backend tests green; PostgreSQL verified via GitHub Actions (see CI). No dashboards, messaging, portal or frontend in this milestone. Tax remains default NONE (no GST invented).
+> **Current status: Phase 5.1 (Guest portal foundation, backend) — ✅ complete.**
+> Phases 1–4 are closed and PostgreSQL-verified. Phase 5.1 delivered hashed bearer tokens issued at check-in, lifecycle-derived 24h expiry, ADMIN revoke/rotate, and read-only guest APIs (overview/menu/cab/wifi + FINAL receipt) — backend tests green; PostgreSQL verified via GitHub Actions (see CI). No public site, WhatsApp, online booking/payments or frontend in this milestone. Tax remains default NONE (no GST invented). Tour/tourist content remains a documented gap (no content model exists).
 
 ## Phase 0 — Documentation & design ✅ (this milestone)
 - [x] README, SRS, Architecture, Database, RBAC, Booking/Billing workflows, Guest portal, API design, Roadmap
@@ -94,6 +94,14 @@
 - [x] **203 tests passing, 12 skipped** (SQLite; PG reports aggregation + receipts-immutability tests skip locally, enforced in CI); Alembic upgrade/downgrade clean on SQLite; PostgreSQL tests run in CI with fail-if-skip guard
 - **Exit criteria met (backend):** reconciliation traceable to source records, outstanding credits distinguished, occupancy defined and timezone-unshifted (UTC, documented), read-only guarantees tested. No dashboards, messaging, portal or frontend.
 - Next: Phase 5 (guest portal) — do not start automatically.
+
+### Phase 5.1 — Guest portal foundation ✅ (complete, 2026-11-09)
+- [x] 256-bit bearer tokens (URL-safe) issued transactionally at check-in, **SHA-256 hash only** in `guest_portal_tokens` (partial unique: one active per booking); raw token shown once in the check-in response (and on staff rotate), never logged/audited/persisted again
+- [x] Lifecycle-derived expiry: open before checkout, expires exactly 24h after `checked_out_at` (strict), cancelled bookings rejected, revocations permanent; ADMIN revoke/rotate/status under `portal.tokens.manage` (audit without raws)
+- [x] Unauthenticated read-only portal APIs (`/api/v1/guest-portal/{token}/overview|menu|cab|wifi|receipt|receipt/download`), cache `no-store`, generic 404 (no oracle), in-process brute-force limiter, guest-safe fields (no ids/money/PII), FINAL receipt bytes reused from `receipts`
+- [x] **219 tests passing, 16 skipped** (SQLite; PG portal token/isolation/round-trip tests skip locally, enforced in CI); Alembic upgrade/downgrade clean on SQLite; PostgreSQL tests run in CI with fail-if-skip guard
+- **Exit criteria met (backend):** hashed-token lifecycle, strict isolation, guest-facing content without internals, auditability. No public marketing site, WhatsApp, online booking, online payments, or frontend portal.
+- Next: Phase 5.2 (portal frontend + tourism content) — do not start automatically.
 
 - Folio engine (charges, discounts with limits, reversals), payments (advance/check-in/checkout, cash/UPI/card), transactions
 - Tax computation from settings; ReportLab PDF receipts (payment + final)

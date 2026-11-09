@@ -119,6 +119,8 @@ Modular monolith backend (FastAPI) + separate Next.js frontend, PostgreSQL datab
 | FR-PORTAL-05 | The portal MUST NOT expose sensitive guest information or other guests'/bookings' data. |
 | FR-PORTAL-06 | ADMIN MUST be able to revoke/rotate a guest token (e.g. lost phone, suspected leak). |
 
+**Phase 5.1 status (implemented 2026-11-09, backend only):** token foundation delivered: per-booking 256-bit tokens issued transactionally at check-in (the guest receives the active stay's link; the raw value is shown once in the check-in response and never stored/logged/audited), lifecycle-derived expiry (checkout + 24h; open-ended before checkout), permanent revocation, ADMIN rotate/revoke/status, and unauthenticated read-only guest APIs — overview (no ids/money/PII), menu, cab, wifi (configured values only) and FINAL receipt download. Portal endpoints use the token in the path under `/api/v1/guest-portal/{token}/...` and are cache-busted (`no-store`); unknown/revoked/expired → generic 404; rate limiting guards brute force. Tour/tourist content remains a 5.2 gap (no model yet — nothing invented). FR-PORTAL-01 ("at creation") is superseded by the Phase 5.1 check-in decision: a guest portal token only makes sense for an active stay; creation-time issuance would expose lapsed tokens.
+
 ### 3.7 Checkout
 | ID | Requirement |
 |---|---|

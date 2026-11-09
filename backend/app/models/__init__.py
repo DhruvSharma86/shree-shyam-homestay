@@ -7,6 +7,7 @@ from app.models.booking import Booking
 from app.models.cab_info import CabInfo
 from app.models.folio_entry import FolioEntry
 from app.models.guest import Guest
+from app.models.guest_portal_token import GuestPortalToken
 from app.models.hotel_info import HotelInfo
 from app.models.payment import Payment
 from app.models.receipt import Receipt
@@ -24,6 +25,7 @@ __all__ = [
     "CabInfo",
     "FolioEntry",
     "Guest",
+    "GuestPortalToken",
     "HotelInfo",
     "MenuCategory",
     "MenuItem",

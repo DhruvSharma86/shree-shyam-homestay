@@ -90,6 +90,12 @@ Receptionists can see bookings/guests **needed for operations** (today's arrival
 ### Phase 4.4 report enforcement (implemented 2026-11-09)
 Every `/api/v1/reports/*` endpoint (financial summary/collections/methods/outstanding/reconciliation/reversals, bookings summary/occupancy, and both CSV exports) requires `reports.financial.read`, which is **ADMIN-only** — RECEPTIONIST receives 403 and unauthenticated 401 (default-deny preserved). Reports are GET-only (no mutation endpoints exist), so CSRF does not apply (no state change). No guest PII is returned (only booking references, room numbers, statuses).
 
+### Phase 5.1 guest portal enforcement (implemented 2026-11-09)
+`/api/v1/guest-portal/{token}/*` routes **require no staff session and no RBAC permission** (bearer-link isolation: unresolved/expired/revoked/cancelled tokens all get the same generic 404; a brute-force limiter guards guessing). Staff administration under `/api/v1/guest-portal/admin-status|admin-revoke|admin-rotate/{booking_id}` requires `portal.tokens.manage` (**ADMIN-only**), with CSRF on the two mutation routes. Today `portal.tokens.manage` grants in practice: status (never raw), permanent revoke, rotate (raw token shown once). Audits: `PORTAL_TOKEN_ISSUED` / `PORTAL_TOKEN_REVOKED` (booking id only — never the raw token, never guest PII). Default-deny preserved: unauthenticated staff routes → 401, RECEPTIONIST → 403, missing CSRF → 403. Existing ADMIN/RECEPTIONIST roles and permissions are otherwise untouched; no guest-facing permission is required or added.
+
+### Phase 4.4 report enforcement (implemented 2026-11-09)
+Every `/api/v1/reports/*` endpoint (financial summary/collections/methods/outstanding/reconciliation/reversals, bookings summary/occupancy, and both CSV exports) requires `reports.financial.read`, which is **ADMIN-only** — RECEPTIONIST receives 403 and unauthenticated 401 (default-deny preserved). Reports are GET-only (no mutation endpoints exist), so CSRF does not apply (no state change). No guest PII is returned (only booking references, room numbers, statuses).
+
 ## 6. Examples of enforcement checks
 | Endpoint | Required permission |
 |---|---|

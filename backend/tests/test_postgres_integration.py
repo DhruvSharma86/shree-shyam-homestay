@@ -12,6 +12,7 @@ just SQLite. The SQLite suite covers the exhaustive behavioural matrix.
 """
 
 import os
+from datetime import UTC
 
 import pytest
 from sqlalchemy import inspect, text
@@ -70,6 +71,7 @@ def test_postgres_schema_contains_auth_tables() -> None:
         "folio_entries",
         "payments",
         "receipts",
+        "guest_portal_tokens",
     } <= tables
 
     user_columns = {c["name"] for c in inspector.get_columns("users")}
@@ -623,6 +625,113 @@ def _pg_create_booking(pg_client, headers, room_id, guest_id, check_in, check_ou
     )
     assert created.status_code == 201, created.text
     return created.json()["id"]
+
+
+def test_postgres_portal_token_roundtrip(pg_client) -> None:
+    """Portal token: hash-only storage, overview, revocation, expiry rules."""
+    from datetime import datetime, timedelta
+
+    from sqlalchemy import text as _t
+
+    from app.core.db import get_session_factory
+    from app.models.booking import Booking
+    from app.models.guest_portal_token import GuestPortalToken
+    from tests.factories import csrf_headers
+
+    room_id, _rt, guest_id, _actor, check_in, check_out = _pg_booking_setup(pg_client)
+    headers = csrf_headers(pg_client)
+    booking_id = _pg_create_booking(pg_client, headers, room_id, guest_id, check_in, check_out)
+    pg_client.post(
+        f"/api/v1/bookings/{booking_id}/payments",
+        json={"amount": "3000.00", "mode": "UPI", "payment_stage": "CHECK_IN"},
+        headers=headers,
+    )
+    checked = pg_client.post(
+        f"/api/v1/bookings/{booking_id}/check-in", json={}, headers=headers
+    )
+    assert checked.status_code == 200, checked.text
+    raw = checked.json()["portal_access_token"]
+    assert raw not in (None, "")
+    # Hash-only persisted.
+    db = get_session_factory()()
+    try:
+        rows = db.query(GuestPortalToken).filter(
+            GuestPortalToken.booking_id == booking_id
+        ).all()
+        assert len(rows) == 1
+        assert rows[0].token_hash != raw
+        assert len(rows[0].token_hash) == 64
+        booking = db.get(Booking, booking_id)
+        booking.checked_out_at = datetime.now(UTC) - timedelta(hours=23)
+        db.commit()
+    finally:
+        db.close()
+    # Valid 23h after checkout; dead 25h after.
+    assert pg_client.get(f"/api/v1/guest-portal/{raw}/overview").status_code == 200
+    db = get_session_factory()()
+    try:
+        booking = db.get(Booking, booking_id)
+        booking.checked_out_at = datetime.now(UTC) - timedelta(hours=25)
+        db.commit()
+    finally:
+        db.close()
+    assert pg_client.get(f"/api/v1/guest-portal/{raw}/overview").status_code == 404
+    # Revocation cuts the rotated token too.
+    db = get_session_factory()()
+    try:
+        booking = db.get(Booking, booking_id)
+        booking.checked_out_at = datetime.now(UTC)
+        db.commit()
+    finally:
+        db.close()
+    rotate = pg_client.post(
+        f"/api/v1/guest-portal/admin-rotate/{booking_id}", headers=headers
+    )
+    assert rotate.status_code == 200, rotate.text
+    rotated = rotate.json()["portal_access_token"]
+    assert pg_client.get(f"/api/v1/guest-portal/{rotated}/overview").status_code == 200
+    revoke = pg_client.post(
+        f"/api/v1/guest-portal/admin-revoke/{booking_id}", headers=headers
+    )
+    assert revoke.status_code == 200
+    assert pg_client.get(f"/api/v1/guest-portal/{rotated}/overview").status_code == 404
+    with get_engine().connect() as conn:
+        count = conn.execute(
+            _t(
+                "SELECT count(*) FROM guest_portal_tokens WHERE booking_id = :id "
+                "AND revoked_at IS NULL"
+            ),
+            {"id": booking_id},
+        ).scalar()
+        assert count == 0
+
+
+def test_postgres_portal_isolation(pg_client) -> None:
+    """Two bookings' tokens are disjoint; staff APIs stay session-gated."""
+    from fastapi.testclient import TestClient
+
+    from app.main import create_app
+    from tests.factories import csrf_headers
+
+    room_id, _rt, guest_id, _actor, check_in, check_out = _pg_booking_setup(pg_client)
+    headers = csrf_headers(pg_client)
+    booking_id = _pg_create_booking(pg_client, headers, room_id, guest_id, check_in, check_out)
+    pg_client.post(
+        f"/api/v1/bookings/{booking_id}/payments",
+        json={"amount": "3000.00", "mode": "UPI", "payment_stage": "CHECK_IN"},
+        headers=headers,
+    )
+    checked = pg_client.post(
+        f"/api/v1/bookings/{booking_id}/check-in", json={}, headers=headers
+    )
+    raw = checked.json()["portal_access_token"]
+    anon = TestClient(create_app())
+    assert anon.get("/api/v1/bookings").status_code == 401
+    assert anon.get(f"/api/v1/guest-portal/{raw}/overview").status_code == 200
+    meta = pg_client.get(f"/api/v1/guest-portal/{raw}/overview")
+    assert meta.status_code == 200, meta.text
+    assert meta.json()["booking_ref"]
+
 
 
 def test_postgres_payment_flow(pg_client) -> None:

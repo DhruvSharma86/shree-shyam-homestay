@@ -29,6 +29,7 @@ from app.billing.service import (
     lock_booking,
     stage_paid,
 )
+from app.guest_portal.service import issue_portal_token
 from app.models.booking import Booking, BookingSource, BookingStatus
 from app.models.folio_entry import FolioEntry
 from app.models.guest import Guest
@@ -318,7 +319,9 @@ def update_booking(
     return booking
 
 
-def check_in_booking(db: DBSession, booking: Booking, *, actor_user_id: uuid.UUID) -> Booking:
+def check_in_booking(
+    db: DBSession, booking: Booking, *, actor_user_id: uuid.UUID
+) -> tuple[Booking, str]:
     """Check in a CONFIRMED booking (mandatory one-night payment, D2).
 
     Locks the booking row, verifies the booking is CONFIRMED, computes
@@ -357,7 +360,11 @@ def check_in_booking(db: DBSession, booking: Booking, *, actor_user_id: uuid.UUI
             "checkin_paid": str(paid),
         },
     )
-    return locked
+    # The guest portal token is issued transactionally with check-in —
+    # the raw value is returned exactly once (through the check-in
+    # response), never persisted again.
+    _, portal_raw = issue_portal_token(db, locked, actor_user_id=actor_user_id)
+    return locked, portal_raw
 
 
 def check_out_booking(

@@ -123,11 +123,18 @@ Financial writes and their audit rows commit in the same transaction; audit meta
 | `/bookings/{id}/messages/checkout` | POST | sends checkout + receipt |
 | `/messages` | GET | message_log list (ADMIN) |
 
-### 3.8 Guest portal (no session — token in path)
+### 3.8 Guest portal (no session — token in path, Phase 5.1)
 | Endpoint | Method | Notes |
 |---|---|---|
-| `/guest/{token}` | GET | portal view (minimal data only) |
-| `/guest/{token}/receipt` | GET | final PDF (post-checkout, pre-expiry) |
+| `/guest-portal/{token}/overview` | GET | stay fields + hotel contact (no ids/money/PII) |
+| `/guest-portal/{token}/menu` | GET | active categories + visible items |
+| `/guest-portal/{token}/cab` | GET | active cab providers |
+| `/guest-portal/{token}/wifi` | GET | SSID/password only when configured |
+| `/guest-portal/{token}/receipt` | GET | final receipt metadata (404 until issued) |
+| `/guest-portal/{token}/receipt/download` | GET | stored FINAL PDF bytes for this booking only |
+| `/bookings/{id}/guest-portal` | GET | staff status (ADMIN `portal.tokens.manage`) — never raw |
+| `/bookings/{id}/guest-portal/revoke` | POST | staff revoke (ADMIN; see §5f) |
+| `/bookings/{id}/guest-portal/rotate` | POST | staff re-issue raw-once (ADMIN; see §5f) |
 
 ### 3.9 Public website (unauthenticated, read-only)
 | Endpoint | Method | Notes |
@@ -173,7 +180,7 @@ Financial writes and their audit rows commit in the same transaction; audit meta
 - **Checkout:** `POST /bookings/{id}/check-out` (`bookings.checkout`, both roles, CSRF) — `CHECKED_IN` only; cancelled → 422; CONFIRMED → 422; already `CHECKED_OUT` → 422 (duplicate). Transition + `checked_out_at/by` + audits + receipt persistence commit atomically under a booking-row `SELECT … FOR UPDATE` lock (concurrent checkouts: exactly one wins).
 - **Settlement:** balance is re-derived from the ledger (authoritative `folio_totals()` — no recompute, no stored total). Positive balance → 422 listing the amount. Negative balance (credit) → 422 pending the refund/write-off workflow (not implemented).
 - **Immutability after checkout:** every folio/payment mutation checks `CHECKED_OUT` via the folio-closed guard (→ 409) in the service layer; PATCH on a checked-out booking stays blocked with the pre-existing non-CONFIRMED rule (422).
-- **Receipt:** FINAL receipt rendered in-memory by ReportLab (hotel fields only when configured; `INR` grouping, 2dp Decimals, Helvetica embedded font; tax configuration shown as a note when the tax snapshot ≠ NONE — no liability calculated, D5), PDF bytes stored in PostgreSQL with `content_hash` (partial unique on FINAL per booking). Same bytes on every download; no filesystem paths, no traversal surface, `application/pdf`, `attachment; filename="RCPT-XXXXXXXX.pdf"`, `Cache-Control: no-store`. `GET /receipt` returns metadata; `GET /receipt/download` audits `RECEIPT_DOWNLOADED` first, then serves the stored bytes.
+- **Receipt:** FINAL receipt rendered in-memory by ReportLab (hotel fields only when configured; `INR` grouping, 2dp Decimals, Helvetica embedded font; tax configuration shown as a three-state note when the tax snapshot ≠ NONE (§7 — no liability calculated, D5), PDF bytes stored in PostgreSQL with `content_hash` (partial unique on FINAL per booking). Same bytes on every download; no filesystem paths, no traversal surface, `application/pdf`, `attachment; filename="RCPT-XXXXXXXX.pdf"`, `Cache-Control: no-store`. `GET /receipt` returns metadata; `GET /receipt/download` audits `RECEIPT_DOWNLOADED` first, then serves the stored bytes.
 - **Failure semantics:** a PDF render failure aborts the transaction — no status change, no receipt, no checkout (recoverable by retrying after fixing the cause).
 
 ## 5e. Phase 4.4 reporting (implemented)
@@ -183,6 +190,13 @@ Financial writes and their audit rows commit in the same transaction; audit meta
 - **Outstanding:** a **live snapshot** (current ledger state, not a historical reconstruction), non-cancelled bookings with balance ≠ 0, sorted most-owed first, paginated; checked-out (settled) bookings have zero balance by construction and never appear. Credits (`balance < 0`) are reported as `credit_total`, clearly distinct from outstanding dues.
 - **Reconciliation:** period-only traceability: `charge_entries = Σ entries`, `original_payments`, `reversal_payments`, `net_payments`, `outstanding_in_period`, `credit_in_period`, plus row counts; discrepancies would be visible here rather than silently adjusted (no repair is performed).
 - **Bookings:** stays overlapping `[from, to + 1)` under the `[check-in, check-out)` convention; cancelled counted separately. **Occupancy:** occupied = stay-segment nights of non-cancelled bookings clipped to the range (double bookings are structurally impossible on one room); capacity = active + AVAILABLE rooms × days in range (assumes every active room was available all period — maintenance schedules are not stored, a documented limitation).
+
+## 5f. Phase 5.1 guest portal behaviour (implemented)
+- **Issuance:** the token is created transactionally with check-in (`check_in_booking`), not at booking creation (FR-PORTAL-01 superseded as above). The check-in response is the only response to ever contain `portal_access_token` (shown once; rotate behaves the same).
+- **Expiry:** `checked_out_at + 24h`, derived at read time (strict: at the deadline, access is already dead). Open-ended before checkout; cancelled bookings always dead (resolution step), regardless of stored rows.
+- **Responses:** all guest-portal JSON + the portal receipt PDF carry `Cache-Control: no-store, private`. Overview never contains guest phone/ids, money, folio/payment history, audit rows or other guests. Wi-Fi SSID/password appear only when configured on the hotel profile (never invented).
+- **Security:** SHA-256 hash-only storage; constant-time compare on resolution; one generic `404 NOT_FOUND / Portal page not found.` for unknown/revoked/expired/cancelled; brute-force guard via the shared login limiter (hash-keyed, 10 failures/5 min); tokens never appear in logs, errors or audit metadata beyond their ids (audits: `PORTAL_TOKEN_ISSUED/REVOKED`).
+- **Deferred:** tourism/tour-package content (no model yet — admins have no content table to edit; a 5.2 milestone must add it rather than this one pretending); WhatsApp delivery of links (Phase 7 mock); guest portal frontend; inactivity-window expiry (FR-PORTAL-04 "should").
 
 ## 6. Non-goals
 - No GraphQL, no websockets, no webhooks (v1). No public API for third parties.
