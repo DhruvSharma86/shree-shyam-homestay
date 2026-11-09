@@ -654,6 +654,17 @@ def test_postgres_portal_token_roundtrip(pg_client) -> None:
     assert checked.status_code == 200, checked.text
     raw = checked.json()["portal_access_token"]
     assert raw not in (None, "")
+    # Settle for real: 9000 owed - 3000 paid -> collect 6000 and check out.
+    settled = pg_client.post(
+        f"/api/v1/bookings/{booking_id}/payments",
+        json={"amount": "6000.00", "mode": "CASH", "payment_stage": "OTHER"},
+        headers=headers,
+    )
+    assert settled.status_code == 201, settled.text
+    out = pg_client.post(
+        f"/api/v1/bookings/{booking_id}/check-out", json={}, headers=headers
+    )
+    assert out.status_code == 200, out.text
     # Hash-only persisted.
     db = get_session_factory()()
     try:
