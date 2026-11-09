@@ -215,6 +215,11 @@ def _pg_booking_setup(pg_client):
     )
 
     today = datetime.now(UTC).date()
+    # Unique suffix per call: room-type name, room number and guest phone
+    # are unique in the DB (and the API rejects duplicates with 409), so
+    # repeated setup in the same module would otherwise collide.
+    suffix = _uuid.uuid4().hex[:8].upper()
+    phone = f"98765{int(suffix, 16) % 100000:05d}"
     db = get_session_factory()()
     try:
         db.execute(text("DELETE FROM bookings"))
@@ -225,12 +230,14 @@ def _pg_booking_setup(pg_client):
         db.close()
     assert login(pg_client, "pgbookadmin", ADMIN_PASSWORD).status_code == 200
     headers = csrf_headers(pg_client)
-    rt = pg_client.post("/api/v1/admin/room-types", json={"name": "PG Deluxe"}, headers=headers)
+    rt = pg_client.post(
+        "/api/v1/admin/room-types", json={"name": f"PG Deluxe {suffix}"}, headers=headers
+    )
     assert rt.status_code == 201, rt.text
     room_type_id = rt.json()["id"]
     room = pg_client.post(
         "/api/v1/admin/rooms",
-        json={"room_number": "PG101", "room_type_id": room_type_id},
+        json={"room_number": f"PG{suffix[:6]}", "room_type_id": room_type_id},
         headers=headers,
     )
     assert room.status_code == 201, room.text
@@ -247,7 +254,7 @@ def _pg_booking_setup(pg_client):
     )
     assert rate.status_code == 201, rate.text
     guest = pg_client.post(
-        "/api/v1/guests", json={"full_name": "PG Booker", "phone": "9876500777"}, headers=headers
+        "/api/v1/guests", json={"full_name": "PG Booker", "phone": phone}, headers=headers
     )
     assert guest.status_code == 201, guest.text
     guest_id = guest.json()["id"]
@@ -294,6 +301,8 @@ def test_postgres_booking_concurrent_overlap(pg_client) -> None:
     import threading
     import uuid as _uuid
 
+    from sqlalchemy.exc import IntegrityError
+
     from app.bookings.service import BookingOverlapError, create_booking
     from app.core.db import get_session_factory
 
@@ -328,6 +337,11 @@ def test_postgres_booking_concurrent_overlap(pg_client) -> None:
             db.commit()
             results.append("ok")
         except BookingOverlapError:
+            db.rollback()
+            results.append("conflict")
+        except IntegrityError:
+            # Exclusion-constraint backstop fires (e.g. under racing INSERTs);
+            # the API maps this to 409 as well.
             db.rollback()
             results.append("conflict")
         except Exception:
