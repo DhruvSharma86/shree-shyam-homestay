@@ -276,8 +276,8 @@ def _pg_booking_setup(pg_client):
         # TRUNCATE (not DELETE): the append-only triggers reject DELETE
         # on finance tables, but TRUNCATE bypasses row triggers and is a
         # clean test-isolation step. receipts is included because it
-        # references bookings (FK RESTRICT).
-        db.execute(text("TRUNCATE receipts, payments, folio_entries, bookings"))
+        # references bookings (FK RESTRICT), and so are guest_portal_tokens.
+        db.execute(text("TRUNCATE guest_portal_tokens, receipts, payments, folio_entries, bookings"))
         db.execute(text("DELETE FROM users WHERE username = 'pgbookadmin'"))
         create_user(db, username="pgbookadmin", password=ADMIN_PASSWORD, role=UserRole.ADMIN.value)
         db.commit()
