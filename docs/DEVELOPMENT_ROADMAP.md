@@ -121,7 +121,14 @@
 - [x] Staff bookings page (`/admin/bookings`): one-night payment + check-in delivery with one-time portal link (copy/dismiss, never persisted; rotation ADMIN-only)
 - [x] **16 frontend tests pass**; `next build` clean (partial prerendered guest page, no static guest data); backend 228 passed locally with 16 new PG skips (enforced in CI)
 - **Exit criteria met:** guest sees configured stay/menu/cab/tourism/wifi/receipt content with bearer-link security; ADMIN manages tourism content without code changes/DB edits.
-- Next: Phase 5.3 (public marketing site or portal polish) — do not start automatically.
+- Next: Phase 5.3 (guest experience hardening & operational readiness) — do not start automatically.
+
+#### Phase 5.3 Priority 1 — Receptionist booking access ✅ (complete, 2026-11-09)
+- [x] Replaced the exclusive layout-level `RequireAdmin` with layered guards: `RequireStaff` (any authenticated session) wraps `/admin/*`; route-level `RequireAdmin` gates tourism; `AdminShell` navigation filters by role (bookings/dashboard for RECEPTIONIST, all sections for ADMIN)
+- [x] Receptionist now reaches `/admin/bookings` (list, one-night payment, check-in, link display + copy) with rotate/revoke controls hidden client-side via `portal.tokens.manage` (backend still denies them independently)
+- [x] Frontend tests: `RequireStaff` (loading/anon/roles), shell role navigation, receptionist check-in flow without admin controls, tourism blocked for receptionists, per-role bookings behavior
+- **Exit criteria met:** RECEPTIONIST operational booking workflow reachable via UI; ADMIN permissions unchanged; backend RBAC authoritative.
+- Next: continue Phase 5.3 (journey/security/mobile hardening) — do not start automatically.
 
 ## Phase 6 — Reports, audit viewer, public website
 - Admin financial/occupancy reports; audit-log viewer

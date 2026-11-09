@@ -3,12 +3,17 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
+import { RequireAdmin } from '@/components/RequireAdmin';
 import { localInfoSchema, tourPackageSchema } from '@/schemas';
 import { tourismApi } from '@/services/tourism';
 import { apiErrorMessage } from '@/lib/api';
 import { Button, Card, Empty, Err, Field, Input, Spinner } from '@/components/ui/primitives';
 
 export default function TourismPage() {
+  return <RequireAdmin><TourismContent /></RequireAdmin>;
+}
+
+function TourismContent() {
   const qc = useQueryClient();
   const [err, setErr] = useState('');
   const packages = useQuery({ queryKey: ['tour-packages'], queryFn: () => tourismApi.packages() });

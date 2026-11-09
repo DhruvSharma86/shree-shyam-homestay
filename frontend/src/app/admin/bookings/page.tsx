@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { bookingsApi } from '@/services/tourism';
 import { apiErrorMessage } from '@/lib/api';
+import { useAuthStore } from '@/stores/auth';
 import { Button, Card, Empty, Err, Field, Input, Spinner } from '@/components/ui/primitives';
 
 const BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:8000';
@@ -10,6 +11,11 @@ const PREFIX = process.env.NEXT_PUBLIC_API_V1 ?? '/api/v1';
 
 export default function BookingsPage() {
   const qc = useQueryClient();
+  const { me } = useAuthStore();
+  // Portal administration (rotate/revoke) is ADMIN-only in the backend;
+  // hide the controls for receptionists entirely (backend still enforces
+  // the denial independently).
+  const canAdminPortal = (me?.permissions ?? []).includes('portal.tokens.manage');
   const [selected, setSelected] = useState<string | null>(null);
   const [err, setErr] = useState('');
   const [linkToken, setLinkToken] = useState<string | null>(null);
@@ -124,7 +130,7 @@ export default function BookingsPage() {
                   </p>
                 </div>
               ) : null}
-              {detail.data.status === 'CHECKED_IN' ? (
+              {canAdminPortal && detail.data.status === 'CHECKED_IN' ? (
                 <div className="flex flex-wrap gap-2">
                   <Button type="button" onClick={() => rotate.mutate()} disabled={rotate.isPending}>Rotate link (ADMIN)</Button>
                   <Button type="button" onClick={() => revoke.mutate()} disabled={revoke.isPending}>Revoke link (ADMIN)</Button>

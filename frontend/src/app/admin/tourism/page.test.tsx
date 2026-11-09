@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import TourismPage from '@/app/admin/tourism/page';
+import { useAuthStore } from '@/stores/auth';
 
 vi.mock('next/navigation', () => ({ useRouter: () => ({ replace: vi.fn() }) }));
 
@@ -28,6 +29,10 @@ vi.mock('@/services/tourism', () => ({
 }));
 
 function wrap() {
+  useAuthStore.setState({
+    me: { user: { username: 'admin1', role: 'ADMIN', full_name: 'A' } as never, permissions: ['users.manage'] } as never,
+    loading: false,
+  });
   return render(
     <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
       <TourismPage />

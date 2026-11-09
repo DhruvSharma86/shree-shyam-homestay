@@ -1,12 +1,15 @@
 'use client';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { useAuthStore } from '@/stores/auth';
+import { useAuthStore, isAdmin } from '@/stores/auth';
 import { logout } from '@/services/auth';
 
-const NAV = [
+const STAFF_NAV = [
   ['Dashboard', '/admin/dashboard'],
   ['Bookings', '/admin/bookings'],
+] as const;
+
+const ADMIN_NAV = [
   ['Hotel', '/admin/hotel'],
   ['Room types', '/admin/room-types'],
   ['Rooms', '/admin/rooms'],
@@ -31,13 +34,16 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
     router.replace('/login');
   }
 
+  const adminOnly = isAdmin(me?.permissions, me?.user.role);
+  const nav = adminOnly ? [...STAFF_NAV, ...ADMIN_NAV] : STAFF_NAV;
+
   return (
     <div className="flex min-h-screen flex-col md:flex-row">
       <aside className="w-full shrink-0 border-b border-stone-200 bg-white p-4 md:w-56 md:border-b-0 md:border-r">
         <p className="font-semibold tracking-tight">Shree Shyam Home Stay</p>
         <p className="text-xs text-stone-500">Administration</p>
         <nav className="mt-4 space-y-1" aria-label="Admin">
-          {NAV.map(([label, href]) => (
+          {nav.map(([label, href]) => (
             <Link key={href} href={href} data-testid={`nav-${href.split('/').pop()}`}
               className={`block rounded-md px-2 py-1.5 text-sm ${path === href ? 'bg-stone-900 text-white' : 'hover:bg-stone-100'}`}>
               {label}
