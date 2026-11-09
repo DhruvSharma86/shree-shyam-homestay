@@ -114,7 +114,17 @@ Next server; do not scale replicas (the in-memory limiter).
 4. Anonymous guest link: overview/menu/cab/wifi load with `cache-control: no-store, private`; images show dish alt text; `.guest` HTML has `no-store` + `noindex`.
 5. Logout → staff 401 without session; receptionist rotate/revoke → 403.
 
-## 9. Remaining production launch blockers
+## 10. S2 commands (verified locally 2026-11-09 — Render not yet provisioned)
+
+| Service | Build | Start | Notes |
+|---|---|---|---|
+| Backend | `cd backend && pip install -e .` (locked: `uv sync --frozen --no-dev`) | `uvicorn app.main:app --host 0.0.0.0 --port $PORT` | `backend/Procfile` encodes the same; `$PORT` is Render-provided. Lockfile: `backend/uv.lock` (52 packages, regenerated without changing constraints). |
+| Frontend | `cd frontend && npm ci && npm run build` | `npm run start` | Node ≥20 <25 (`.nvmrc` 22, `engines` pin); `NEXT_PUBLIC_*` set **before** build. |
+| DB | — | `alembic upgrade head` | Verify single head `e2f3a4b5c6d7`, `btree_gist` + triggers on staging PG (see §3). |
+
+Render Blueprint: `render.yaml` (placeholders only — `sync: false` owner values). Deployment order: owner account → GitHub link → staging PG → extension proof → backend secrets → backend deploy → **explicit migration** → `/health/ready` → frontend env (pre-build) → frontend deploy → auth/CORS verification. No migrations run automatically on startup (verified).
+
+## 11. Remaining production launch blockers
 Real PG restore drill (NOT VERIFIED), backend lockfile (PARTIAL), backend vuln scan (NOT VERIFIED),
 and staging smoke pass (§8) must all complete before any production go-live. Phase 6 remains
 not started.

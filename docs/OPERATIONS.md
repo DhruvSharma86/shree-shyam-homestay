@@ -33,8 +33,9 @@ process, PostgreSQL). Status labels: **PASS** (verified) / **PARTIAL**
 4. Never run `create_all` / hand DDL in production; migrations are the only schema path. The app never runs migrations on startup (verified: no `create_all` in `app/`).
 
 ### 1.4 Backend / frontend startup
-- Backend: `uvicorn app.main:app --host 127.0.0.1 --port 8000` (bind loopback; proxy-terminated TLS). Production guards in `app/core/config.py` fail fast on insecure settings.
+- Backend: `uvicorn app.main:app --host 127.0.0.1 --port 8000` (bind loopback; proxy-terminated TLS). Production guards in `app/core/config.py` fail fast on insecure settings. Render-ready alternative: `uvicorn app.main:app --host 0.0.0.0 --port $PORT` (see `backend/Procfile`, `render.yaml`).
 - Frontend: `npm run build && npm run start` (or static export of the built output); ensure `NEXT_PUBLIC_API_BASE_URL` points at the public API origin.
+- Dependencies: backend is locked in `backend/uv.lock` (`uv sync --frozen`); frontend uses `package-lock.json` (`npm ci`).
 
 ### 1.5 Reverse-proxy requirements
 - TLS everywhere (frontend + API + guest links); HTTP→HTTPS redirect.

@@ -1,0 +1,73 @@
+# Render Blueprint — Shree Shyam Home Stay (staging)
+# OWNER ACTION REQUIRED: review every field before applying this Blueprint
+# in the Render dashboard. No secrets are included; every sensitive value
+# must be entered by the owner in the dashboard (sync: false).
+# Staging and production must use SEPARATE Blueprints/instances — never share.
+services:
+  - type: web
+    name: shree-shyam-api-staging
+    runtime: python
+    rootDir: backend
+    buildCommand: pip install -e '.'
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health/ready
+    envVars:
+      - key: APP_ENV
+        value: staging
+      - key: APP_DEBUG
+        value: false
+      - key: PYTHON_VERSION
+        value: 3.11.15
+      - key: APP_NAME
+        value: Shree Shyam Home Stay Management System
+      - key: LOG_LEVEL
+        value: INFO
+      - key: API_V1_PREFIX
+        value: /api/v1
+      - key: CORS_ORIGINS
+        sync: false  # owner: set to the exact frontend origin, e.g. https://shree-shyam-web-staging.onrender.com
+      - key: DATABASE_URL
+        sync: false  # owner: paste the staging PostgreSQL connection string
+      - key: SESSION_SECRET
+        generateValue: true  # owner: start from this generated value; do not hardcode another
+      - key: TRUSTED_PROXY_ENABLED
+        value: false  # enable only when the proxy strips/overwrites X-Forwarded-For
+      - key: LOGIN_RATE_LIMIT_ATTEMPTS
+        value: "10"
+      - key: LOGIN_RATE_LIMIT_WINDOW_SECONDS
+        value: "300"
+      - key: PORTAL_RATE_LIMIT_ATTEMPTS
+        value: "60"
+      - key: PORTAL_RATE_LIMIT_WINDOW_SECONDS
+        value: "300"
+      - key: SESSION_IDLE_TIMEOUT_MINUTES
+        value: "30"
+      - key: SESSION_ABSOLUTE_TIMEOUT_HOURS
+        value: "12"
+      # First-boot ADMIN only. Generate a strong password in the Render
+      # dashboard; unset/rotating after bootstrap is the owner's job.
+      - key: INITIAL_ADMIN_USERNAME
+        sync: false
+      - key: INITIAL_ADMIN_PASSWORD
+        sync: false
+      - key: INITIAL_ADMIN_FULL_NAME
+        value: Hotel Administrator
+  - type: web
+    name: shree-shyam-web-staging
+    runtime: node
+    rootDir: frontend
+    buildCommand: npm ci && npm run build
+    startCommand: npm run start
+    healthCheckPath: /
+    envVars:
+      - key: NODE_VERSION
+        value: 22.14.0
+      - key: NEXT_PUBLIC_API_BASE_URL
+        sync: false  # owner: exact backend origin, e.g. https://shree-shyam-api-staging.onrender.com
+      - key: NEXT_PUBLIC_API_V1
+        value: /api/v1
+databases:
+  - name: shree-shyam-db-staging
+    plan: basic-256mb
+    databaseName: shree_shyam
+    user: hotel_app

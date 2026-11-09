@@ -181,6 +181,13 @@
 - [x] `docs/STAGING_DEPLOYMENT_PLAN.md` created; roadmap updated. No deployment, no cloud resources, no business-logic changes.
 - Pre-Phase 6 staging validation is **started (planning)**; Milestone S1 complete. Phase 6 (reports/audit viewer/public website) — **not started**.
 
+#### Pre-Phase 6 Milestone S2 — Render deployment preparation ✅ (complete, 2026-11-09)
+- [x] Backend start manifest (`backend/Procfile`: `uvicorn app.main:app --host 0.0.0.0 --port $PORT`, no debug/migrations on boot, no SQLite/credentials in code paths) + `render.yaml` staging Blueprint (placeholders only, `sync: false` secrets, separate staging/production instances)
+- [x] Lockfile: `backend/uv.lock` (52 packages, constraints unchanged). Verified `uv sync --frozen` + import; **backend 251 passed/17 skipped** under the locked env; ruff/mypy clean
+- [x] Frontend: Node ≥20 <25 pinned (`.nvmrc` 22 + `engines`), `npm ci` clean, **50/50 tests**, TS/ESLint/build clean. `NEXT_PUBLIC_*` untouched (no secrets, set before build)
+- [x] Migrations verified as a single head (`e2f3a4b5c6d7`); `btree_gist`/triggers **awaiting staging PG proof in S3** (not claimed)
+- Pre-Phase 6 staging validation continues (S2 complete). Phase 6 — **not started**.
+
 ## Phase 6 — Reports, audit viewer, public website
 - Admin financial/occupancy reports; audit-log viewer
 - Public marketing site (Home/About/Rooms/Gallery/Facilities/Restaurant/Attractions/Contact, Maps embed, tel: links) — **no booking functionality**
