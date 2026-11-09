@@ -19,7 +19,7 @@ so all reporting treats timestamps as UTC (documented assumption).
 
 import uuid
 from collections import defaultdict
-from datetime import date, datetime, time, timedelta, timezone
+from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 from typing import Any
 
@@ -44,21 +44,26 @@ def _bounds(
     if from_date is None:
         start = None
     else:
-        start = datetime.combine(from_date, time.min, tzinfo=timezone.utc)
+        start = datetime.combine(from_date, time.min)
     if to_date is None:
         end = None
     else:
-        end = datetime.combine(to_date, time.min, tzinfo=timezone.utc) + timedelta(days=1)
+        end = datetime.combine(to_date, time.min) + timedelta(days=1)
     return start, end
 
 
 def _in_range(created_at: datetime | None, start: datetime | None, end: datetime | None) -> bool:
-    """Return True when a possibly-None timestamp lies in [start, end)."""
+    """Return True when a possibly-None timestamp lies in [start, end).
+
+    Row timestamps may be naive (SQLite) or timezone-aware (PostgreSQL);
+    they are both treated as UTC, so the comparison ignores tzinfo.
+    """
     if created_at is None:
         return False
-    if start is not None and created_at < start:
+    ts = created_at.replace(tzinfo=None)
+    if start is not None and ts < start:
         return False
-    if end is not None and created_at >= end:
+    if end is not None and ts >= end:
         return False
     return True
 
