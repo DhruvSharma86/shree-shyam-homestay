@@ -116,25 +116,35 @@ Not in Phase 3.2 (deferred): `guest_token_hash`, `checkout_at`, folio/payment li
 
 SQLite has no exclusion constraint; its guard is the service-level room-row lock (writes are serialised). Availability queries use the same `[check_in, check_out)` predicate everywhere (`existing.check_in < new.check_out AND existing.check_out > new.check_in`); cancelled bookings are excluded from both.
 
-### 2.11 `folio_entries` (append-only)
+### 2.11 `folio_entries` (append-only) — ✅ implemented (Phase 4.1, migration `f6a7b8c9d0e1`)
+The folio for a booking is the set of `folio_entries` rows with that `booking_id` (one logical folio per booking; no header table). All writes happen in the caller's transaction (atomic with audit rows).
 | Field | Type | Notes |
 |---|---|---|
 | id | UUID PK | |
-| booking_id | FK → bookings | |
-| entry_type | ENUM('ROOM_CHARGE','ADDITIONAL_CHARGE','DISCOUNT','TAX','REVERSAL') | |
-| description | VARCHAR(255) | |
-| quantity | NUMERIC(10,2) DEFAULT 1 | nights / units |
-| unit_amount | NUMERIC(12,2) | |
-| amount | NUMERIC(12,2) | signed; negative for discounts/reversals |
-| reverses_entry_id | FK → folio_entries NULL | for REVERSAL entries |
-| created_by | FK → users | |
+| booking_id | FK → bookings RESTRICT INDEXED | |
+| entry_type | VARCHAR(24) INDEXED | `ROOM_CHARGE` / `ADDITIONAL_CHARGE` / `DISCOUNT` / `TAX` / `REVERSAL` (TAX rows are not created in Phase 4.1 — tax policy per SRS §3.5 pending) |
+| description | VARCHAR(255) NOT NULL | for DISCOUNT/REVERSAL this carries the mandatory reason |
+| quantity | NUMERIC(10,2) DEFAULT 1 CHECK > 0 | nights for room charges, units otherwise |
+| unit_amount | NUMERIC(12,2) NULL CHECK ≥ 0 | rate snapshot at write time (NULL on discounts/reversals) |
+| amount | NUMERIC(12,2) NOT NULL CHECK ≠ 0 | signed; negative for DISCOUNT/REVERSAL |
+| is_initial | BOOL NOT NULL DEFAULT FALSE | TRUE only on the single initial ROOM_CHARGE (CHECK ties it to entry_type) |
+| reverses_entry_id | FK → folio_entries RESTRICT NULL INDEXED | set on REVERSAL rows; target stays untouched |
+| created_by | UUID NULL | actor user id |
 | created_at | TIMESTAMPTZ | immutable |
 
-Positive = charge; negative = discount/reversal (keeps balance math simple: balance = Σ entries − Σ payments).
+Positive = charge; negative = discount/reversal (keeps balance math simple: balance = Σ entries − Σ payments). No `updated_at` (rows never update).
 
-### 2.12 `payments` (append-only)
-`id`, `booking_id FK`, `amount NUMERIC(12,2) > 0`, `mode ENUM('CASH','UPI','CARD_POS')`, `payment_stage ENUM('ADVANCE','CHECK_IN','CHECKOUT','OTHER')`, `reference_note NULL`, `received_by FK → users`, `received_at`, `reversed_payment_id NULL` + optional `reversal` rows for refunds/voids (model TBD in billing workflow doc).
-*No UPDATE/DELETE allowed post-commit except via reversal rows.*
+**Initial room charge:** created exactly once per booking, in the booking-creation transaction, from the booking's `room_subtotal` snapshot (quantity = `nights`, unit_amount = `night_rate_snapshot`) — never recomputed from mutable rates, never merely derived at read time. Exactly-once is enforced by partial unique index `ux_folio_initial_room_charge (booking_id) WHERE is_initial` plus a pre-check in `ensure_initial_charge` (savepoint-guarded, so concurrent attempts converge instead of corrupting the outer transaction). Later stay-date updates that re-snapshot the subtotal append a REVERSAL of the initial plus a new ROOM_CHARGE row (`is_initial=false`) so the folio always follows the booking without editing history. The partial index deliberately targets `is_initial`, not `entry_type='ROOM_CHARGE'`, leaving room for Phase 4.2 extension `ROOM_CHARGE` rows.
+
+**Backfill (documented procedure):** pre-4.1 bookings have no entries. There is no data migration (nothing is fabricated). `GET /bookings/{id}/folio` calls `ensure_initial_charge` — creating the missing snapshot charge idempotently on first read. Cancelled bookings stay history-only (no initial charge is ever created for them).
+
+**Immutability:** PostgreSQL triggers `trg_folio_entries_immutable` / `trg_payments_immutable` (BEFORE UPDATE/DELETE, function `reject_financial_mutation()`) reject UPDATE/DELETE; INSERT remains unrestricted. Downgrade drops triggers then the function before dropping tables. **SQLite limitation:** triggers are PostgreSQL-only; SQLite relies on the service layer (no update/delete code paths exist) — verified in `test_postgres_finance_triggers`, explicitly unmatched on SQLite.
+
+### 2.12 `payments` (append-only) — ✅ implemented Phase 4.1 (schema only; write APIs in Phase 4.2)
+`id UUID PK`, `booking_id FK → bookings RESTRICT INDEXED`, `amount NUMERIC(12,2) CHECK > 0`, `mode VARCHAR(16)` ∈ `CASH`, `UPI`, `CARD_POS` (D1, approved), `payment_stage VARCHAR(16)` ∈ `ADVANCE`, `CHECK_IN`, `CHECKOUT`, `OTHER`, `reference_note VARCHAR(255) NULL` (UPI UTR / terminal reference), `received_by UUID NULL`, `received_at TIMESTAMPTZ DEFAULT now()`, `reverses_payment_id FK → payments RESTRICT NULL INDEXED`, `created_by UUID NULL`, `created_at TIMESTAMPTZ`. Same append-only triggers as above. No UPDATE/DELETE paths are exposed; D3 reserves payment-reversal authorisation to ADMIN (ADMIN-only via `billing.payments.write` plus role check in Phase 4.2 — the endpoint itself is deferred). Phase 4.1 exposes only `GET /bookings/{id}/payments` (history is empty until Phase 4.2 writes).
+
+**Balance rules (authoritative function `app/billing/service.py::folio_totals`):**
+`total_charges = COALESCE(SUM(folio_entries.amount), 0)`, `total_paid = COALESCE(SUM(payments.amount), 0)`, `balance_due = total_charges − total_paid`. No stored running balance (recompute on read; trivial cost at 6 rooms). `Decimal` with `ROUND_HALF_UP` quantization to 2dp; empty sums return `Decimal('0.00')`. Service `NegativeBalanceError` blocks discounts/reversals that would make `total_charges < 0` (422); reversals offset originals without deleting them; already-reversed targets and reversal-of-reversal are rejected (422).
 
 ### 2.13 `audit_log` (append-only) — ✅ implemented (Phase 1.2)
 `id UUID PK`, `actor_user_id FK → users ON DELETE SET NULL NULL` (NULL = system events such as bootstrap), `action VARCHAR(64) INDEXED` (`AUTH_LOGIN`, `AUTH_LOGOUT`, `AUTH_LOGIN_FAILED`, `PASSWORD_CHANGED`, `PASSWORD_RESET`, `USER_CREATED`, `USER_UPDATED`, `USER_DEACTIVATED`, `SESSIONS_REVOKED`, `ADMIN_BOOTSTRAPPED`, later: `RATE_CHANGED`, `DISCOUNT_APPLIED`, `PAYMENT_REVERSED`, ...), `resource_type VARCHAR(64)`, `resource_id VARCHAR(128)`, `metadata_json JSON NULL` (**safe, non-secret context only** — never passwords/tokens), `ip_address VARCHAR(45) NULL`, `created_at TIMESTAMPTZ INDEXED`. Write path: `app/auth/service.py::write_audit`.
@@ -169,10 +179,10 @@ bookings ──< message_log
 
 ## 4. Integrity rules
 - FK constraints everywhere; `ON DELETE RESTRICT` for financial/guest history.
-- Check constraints: bookings `check_out_date > check_in_date`, `nights >= 1`, `number_of_guests >= 1`, money `>= 0`; (Phase 4 adds `payments.amount > 0`, `folio_entries.amount <> 0`).
-- Unique: `users.username`, `rooms.room_number`, `bookings.booking_ref` (Phase 5 adds `bookings.guest_token_hash`).
-- Indexes: `bookings(room_id, status, check_in_date, guest_id, room_type_id)`; `guests(phone)`, `audit_log(created_at)`, `sessions(user_id)`; (Phase 4 adds `payments(booking_id)`, `folio_entries(booking_id)`).
-- PostgreSQL-only: exclusion constraint `excl_bookings_room_daterange` on `bookings` (see §2.10); not present in SQLite/ORM metadata.
+- Check constraints: bookings `check_out_date > check_in_date`, `nights >= 1`, `number_of_guests >= 1`, money `>= 0`; financial: `payments.amount > 0`, `folio_entries.amount <> 0`, `quantity > 0`, negative only for DISCOUNT/REVERSAL (service-validated).
+- Unique: `users.username`, `rooms.room_number`, `bookings.booking_ref`, `ux_folio_initial_room_charge (booking_id) WHERE is_initial`; (Phase 5 adds `bookings.guest_token_hash`).
+- Indexes: `bookings(room_id, status, check_in_date, guest_id, room_type_id)`; `folio_entries(booking_id, entry_type, reverses_entry_id)`, `payments(booking_id, reverses_payment_id)`; `guests(phone)`, `audit_log(created_at)`, `sessions(user_id)`.
+- PostgreSQL-only: exclusion constraint `excl_bookings_room_daterange` on `bookings` (see §2.10); immutability triggers `trg_folio_entries_immutable`, `trg_payments_immutable` (see §2.11/§2.12); not present in SQLite/ORM metadata.
 
 ## 5. Migrations
 - Alembic autogenerate is a starting point only — **every migration reviewed manually** before merge.

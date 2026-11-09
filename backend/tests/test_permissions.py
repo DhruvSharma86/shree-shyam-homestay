@@ -13,6 +13,7 @@ def test_receptionist_has_operational_subset_only() -> None:
     perms = permissions_for_role("RECEPTIONIST")
     assert Permission.BOOKINGS_WRITE in perms
     assert Permission.BILLING_PAYMENTS_WRITE in perms
+    assert Permission.BILLING_DISCOUNTS_WRITE not in perms  # D4: ADMIN-only discounts
     assert Permission.PROFILE_READ in perms
     assert Permission.USERS_MANAGE not in perms
     assert Permission.PRICING_MANAGE not in perms

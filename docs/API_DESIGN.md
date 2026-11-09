@@ -84,16 +84,19 @@ Duplicate rule: exact normalized phone + case-insensitive whitespace-collapsed n
 
 Create body: `{guest_id, room_id, source: PHONE|WALK_IN (default PHONE), check_in_date, check_out_date, number_of_guests (1–20, default 1), notes?}`. Success `201` returns the booking with `booking_ref`, `nights`, `night_rate_snapshot`, `room_subtotal`, `tax_*_snapshot`, `total_amount`. Overlap → `409 CONFLICT`; invalid dates/past dates/inactive guest/maintenance room/no covering rate/mid-stay rate change → `422 VALIDATION_ERROR`. Date convention: check-in inclusive, check-out exclusive. No folio, token, payment, or portal fields exist in this milestone.
 
-### 3.5 Billing (`billing.*`)
+### 3.5 Billing (`billing.*`) — ✅ implemented Phase 4.1 (folio/ledger, read-only payments)
 | Endpoint | Method | Notes |
 |---|---|---|
-| `/bookings/{id}/folio` | GET | entries incl. reversals, balance |
-| `/bookings/{id}/folio/charges` | POST | additional charge |
-| `/bookings/{id}/folio/discounts` | POST | reason required; RBAC limit for RECEPTIONIST |
-| `/bookings/{id}/folio/reversals` | POST | `{reverses_entry_id, reason}` |
-| `/bookings/{id}/payments` | GET, POST | stage + mode validated |
-| `/bookings/{id}/payments/{id}/reverse` | POST | refund/void as reversal entry |
-| `/bookings/{id}/receipts` | GET, POST (generate) | PDF download |
+| `/bookings/{id}/folio` | GET | `billing.receipts.read` (both roles, D6): entries + `total_charges/total_paid/balance_due`; performs backfill-by-demand for pre-4.1 bookings |
+| `/bookings/{id}/folio/charges` | POST | `billing.charges.write` (both roles), CSRF; amount computed server-side (`quantity × unit_amount`) |
+| `/bookings/{id}/folio/discounts` | POST | `billing.discounts.write` (**ADMIN only**, D4), CSRF; `reason` mandatory; negative-folio rejected (422) |
+| `/bookings/{id}/folio/reversals` | POST | `billing.charges.write` (both roles), CSRF; `reason` mandatory; already-reversed/reversal-of-reversal → 422 (D3: payment reversals are ADMIN-only but not implemented yet) |
+| `/bookings/{id}/payments` | GET (paginated) | `billing.receipts.read` (both roles); empty until Phase 4.2 writes |
+| `/bookings/{id}/payments` | POST | **Deferred to Phase 4.2** (D9 overpayment rule applies there) |
+| `/bookings/{id}/payments/{id}/reverse` | POST | **Deferred to Phase 4.2** |
+| `/bookings/{id}/receipts` | GET, POST (generate) | **Deferred to Phase 4.3** (ReportLab) |
+
+Financial writes and their audit rows commit in the same transaction; audit metadata carries entry/payment ids, amounts and reasons only (no guest PII). Balances are always derived (`Σ entries − Σ payments`) with `Decimal`; no stored running total.
 
 ### 3.6 Reports & audit (ADMIN only)
 | Endpoint | Method | Permission |
@@ -139,6 +142,14 @@ Create body: `{guest_id, room_id, source: PHONE|WALK_IN (default PHONE), check_i
 - **Tax snapshot:** `tax_settings` covering check-in is copied (`tax_type_snapshot`, `tax_rate_snapshot`, `tax_pricing_mode_snapshot`); when none is configured → `NONE/null/EXCLUSIVE` with `total == room_subtotal`. Tax amounts are calculated in billing (Phase 4), not here.
 - **Guest integration:** booking requires an **active** existing guest; deactivated/missing guest → `422` (guest must be reactivated via guest API first — no silent rebooking, no auto-creation). Responses contain `guest_id` only (no name/phone/email).
 - **Permissions & CSRF:** GETs need `bookings.read`, create/update need `bookings.write`, cancel needs `bookings.cancel`; all mutations require CSRF. Audit: `BOOKING_CREATED/UPDATED/CANCELLED` with `metadata.fields` only (no PII).
+
+## 5b. Phase 4.1 billing behaviour (implemented)
+- **Initial ROOM_CHARGE:** created exactly once per booking in the booking-creation transaction from `room_subtotal` (`quantity=nights`, `unit_amount=night_rate_snapshot`) — never recomputed from mutable rates, never merely derived at read time. Partial unique index `ux_folio_initial_room_charge` + savepoint-guarded insert. `GET /folio` backfills pre-4.1 bookings idempotently (documented in DATABASE_DESIGN §2.11); cancelled bookings never get a charge.
+- **Ledger math:** `folio_totals()` = `(Σ entries.amount, Σ payments.amount, difference)` with `Decimal` (`ROUND_HALF_UP`, 2dp, zero-safe); no stored running total.
+- **Charges:** `ADDITIONAL_CHARGE = quantity × unit_amount` computed server-side; `≤ 0` or empty description → `422`.
+- **Discounts:** ADMIN-only (`billing.discounts.write`, D4); `reason` mandatory; blocked (422) when they would make `Σ entries < 0`.
+- **Reversals:** `REVERSAL = −original.amount` with `reverses_entry_id` + reason; original untouched; repeated/reversal-of-reversal → `422`.
+- **Phase 4.2/4.3 deferred:** payment writing, check-in/checkout, settlement, PDFs, overpayment rule enforcement (D9 applies there).
 
 ## 6. Non-goals
 - No GraphQL, no websockets, no webhooks (v1). No public API for third parties.

@@ -1,5 +1,7 @@
 # Billing Workflow — Shree Shyam Home Stay
 
+**Phase 4.1 status (implemented 2026-11-09, backend only):** one folio per booking as append-only `folio_entries` + read-only `payments` table; initial `ROOM_CHARGE` created in the booking transaction; additional charges, ADMIN-only discounts and charge reversals via API; balance derived (`Σ entries − Σ payments`, Decimal). Payment recording, check-in/checkout, settlement and PDFs remain deferred (Phases 4.2–4.3) — sections below marked "Phase 4.2/4.3" describe behaviour not yet implemented.
+
 One **folio per booking**. All money movement is append-only; corrections use reversal entries. **No silent deletes or overwrites.**
 
 ## 1. Folio model
@@ -19,28 +21,29 @@ Balance due = Σ(folio_entries.amount) − Σ(payments.amount)
 ```
 
 ## 2. Charging flow
-1. At booking creation: `ROOM_CHARGE` = nights × snapshotted rate. **Full stay** is charged to the folio up-front (balance due at checkout).
-2. During stay: additional charges added by receptionist (restaurant, cab, extra services) with description + amount. Each addition is a folio entry — never edits an existing one.
-3. Nights extension: new `ROOM_CHARGE` entry for extra nights (never modify the original).
-4. Tax: computed at checkout from configured `tax_settings` (or at booking if policy TBD decides otherwise). If GST not applicable → `TAX` entries omitted entirely.
+1. At booking creation: `ROOM_CHARGE` = nights × snapshotted rate. **Full stay** is charged to the folio up-front (balance due at checkout). — ✅ Implemented in Phase 4.1 (atomic initial entry, partial unique index, backfill-by-demand on `GET /folio`).
+2. During stay: additional charges added by receptionist (restaurant, cab, extra services) with description + amount. Each addition is a folio entry — never edits an existing one. — ✅ Phase 4.1.
+3. Nights extension: new `ROOM_CHARGE` entry for extra nights (never modify the original). — Stay-date updates that re-snapshot keep the folio consistent via REVERSAL + revised ROOM_CHARGE (Phase 4.1); additional rows with `is_initial=false` are reserved for later extension flows.
+4. Tax: computed at checkout from configured `tax_settings` (or at booking if policy TBD decides otherwise). If GST not applicable → `TAX` entries omitted entirely. — Deferred (D5: NONE default, no tax rows created).
 
 ## 3. Payment flow
 | Stage | When | Notes |
 |---|---|---|
-| `ADVANCE` | At booking (phone bookings) | Optional; amount free-form |
-| `CHECK_IN` | At check-in | Policy: collect **1 night's room amount** (TBD whether mandatory or recommended) |
-| `CHECKOUT` | At checkout | Collect remaining balance |
-| `OTHER` | Ad-hoc | e.g. mid-stay top-ups |
+| `ADVANCE` | At booking (phone bookings) | **Deferred — Phase 4.2** |
+| `CHECK_IN` | At check-in | **Phase 4.2; D2 rule approved: collect exactly one night's amount at check-in (mandatory check-in gate)** |
+| `CHECKOUT` | At checkout | **Deferred — Phase 4.2/4.3** |
+| `OTHER` | Ad-hoc | **Deferred — Phase 4.2** |
 
-- Modes: `CASH`, `UPI`, `CARD_POS` only. No online payments anywhere.
-- Every payment records: amount, mode, stage, receiver (user), timestamp, optional reference.
+- Modes: `CASH`, `UPI`, `CARD_POS` only (D1, approved). No online payments anywhere.
+- Every payment records: amount, mode, stage, receiver (user), timestamp, optional reference. — **Phase 4.2 (4.1 stores only the table).**
 - Partial payments allowed; balance updates immediately.
-- **Overpayment:** allowed only with explicit staff confirmation (refund path); system warns when payment > balance.
+- **Overpayment:** blocked by default in future payment services (D9); ADMIN may authorize an exception with reason — **Phase 4.2**.
 
 ## 4. Discounts
-- Receptionists may apply discounts up to a **configurable limit (TBD)**; beyond that → ADMIN approval required.
+- Discounts are **ADMIN-only** (D4, Phase 4.1) — RECEPTIONIST denied (403).
 - Every discount requires a **reason** (free text, mandatory) and is stored as a signed folio entry + audit log entry.
-- Discounts can never make the folio negative (system blocks entries that would drive balance below zero, except via ADMIN-approved write-off — TBD).
+- Discounts can never make the folio negative (system blocks entries that would drive the folio total below zero).
+- **Phase 4.2:** refund-linked reversals and ADMIN write-offs (policy TBD).
 
 ## 5. Checkout settlement
 ```
@@ -56,8 +59,8 @@ Balance due = Σ(folio_entries.amount) − Σ(payments.amount)
 ```
 
 ## 6. Corrections & reversals (no silent edits)
-- **Wrong charge added** → add `REVERSAL` folio entry referencing the original (`reverses_entry_id`), amount = −original.
-- **Wrong payment recorded** → add reversal payment entry (refund/void), linked to original.
+- **Wrong charge added** → add `REVERSAL` folio entry referencing the original (`reverses_entry_id`), amount = −original. — ✅ Phase 4.1. Already-reversed targets and reversal-of-reversal are rejected (422); the original remains visible on the folio.
+- **Wrong payment recorded** → add reversal payment entry (refund/void), linked to original. — **Phase 4.2 (ADMIN-only per D3).**
 - Original entries remain visible on the folio (struck through / marked reversed in UI + PDF).
 - Reversals require ADMIN if the original payment was already reported in a closed financial period (TBD period-close concept).
 

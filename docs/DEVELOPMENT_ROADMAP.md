@@ -1,7 +1,7 @@
 # Development Roadmap — Shree Shyam Home Stay
 
-> **Current status: Phase 3.2 (Booking management, backend) — ✅ complete.**
-> Phases 1.1–1.2 (foundation, auth/RBAC), 2.1 (hotel config backend), 2.2 (Admin Dashboard) and 3.1 (guests) delivered. Phase 3.2 delivered: bookings CRUD, availability, overlap prevention, rate/tax snapshots, `CONFIRMED → CANCELLED` lifecycle, PostgreSQL exclusion constraint + concurrency tests, RBAC + audit — backend SQLite tests green; PostgreSQL verified via GitHub Actions (see CI). No check-in/checkout/billing/frontend in this milestone.
+> **Current status: Phase 4.1 (Billing architecture & folio foundation, backend) — ✅ complete.**
+> Phases 1–3 are closed and PostgreSQL-verified. Phase 4.1 delivered: one logical folio per booking (append-only `folio_entries` + read-only `payments`), atomic initial ROOM_CHARGE, charges/discounts/reversals APIs, derived balance, PG immutability triggers, RBAC + audit — backend tests green; PostgreSQL verified via GitHub Actions (see CI). No payment writing, check-in/checkout, settlement, receipts, frontend or reports in this milestone.
 
 ## Phase 0 — Documentation & design ✅ (this milestone)
 - [x] README, SRS, Architecture, Database, RBAC, Booking/Billing workflows, Guest portal, API design, Roadmap
@@ -62,6 +62,15 @@
 - Phase 3.1 guests + Phase 3.2 bookings delivered. No Phase 3 work remains.
 
 ## Phase 4 — Billing, payments, receipts
+#### Phase 4.1 — Billing architecture & folio foundation ✅ (complete, 2026-11-09)
+- [x] `folio_entries` + `payments` models, migration `f6a7b8c9d0e1`, PG immutability triggers (`trg_folio_entries_immutable`, `trg_payments_immutable`), downgrade drops triggers first
+- [x] Initial ROOM_CHARGE created exactly once per booking (booking-creation transaction, partial unique index `ux_folio_initial_room_charge`, savepoint-guarded, backfill-by-demand on first `GET /folio` for pre-4.1 bookings, stays consistent across stay-date updates via REVERSAL + revised charge)
+- [x] APIs: `GET /bookings/{id}/folio`, `POST .../folio/charges`, `POST .../folio/discounts` (ADMIN-only, D4), `POST .../folio/reversals`, `GET /bookings/{id}/payments` (read-only; both roles per D6)
+- [x] Balance derived (`Σ entries − Σ payments`, Decimal, zero-safe); discounts/reversals cannot make the folio negative; corrections are reversal rows only; audit `FOLIO_INITIALIZED`/`FOLIO_CHARGE_ADJUSTED`/`CHARGE_ADDED`/`DISCOUNT_APPLIED`/`REVERSAL_CREATED` without PII
+- [x] **168 tests passing, 8 skipped** (SQLite; 2 PG billing tests skip locally, enforced in CI); Alembic upgrade/downgrade clean on SQLite; PostgreSQL tests run in CI with fail-if-skip guard
+- **Exit criteria met (backend):** folio view with derived balance, atomic initial charge, append-only ledger, reversible charges, immutable PG store, RBAC/audit. No payment writing, check-in/out, settlement, receipts, frontend or reports.
+- Next: Phase 4.2 (payment recording) — do not start automatically.
+
 - Folio engine (charges, discounts with limits, reversals), payments (advance/check-in/checkout, cash/UPI/card), transactions
 - Tax computation from settings; ReportLab PDF receipts (payment + final)
 - **Exit criteria:** end-to-end checkout settlement with reconcile tests; financial immutability tests pass.

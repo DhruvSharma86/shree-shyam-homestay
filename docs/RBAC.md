@@ -23,7 +23,7 @@ Two roles only: `ADMIN`, `RECEPTIONIST`. **Default deny:** any permission not ex
 | Check-in / checkout | ✅ | ✅ |
 | Record payments | ✅ | ✅ |
 | Add additional charges | ✅ | ✅ |
-| Apply discounts | ✅ | ⚠️ up to configurable limit (TBD); beyond limit → ADMIN only |
+| Apply discounts | ✅ | ❌ (D4: ADMIN-only, Phase 4.1) |
 | Generate receipts | ✅ | ✅ |
 | Send guest links (WhatsApp) | ✅ | ✅ |
 | View financial reports / revenue summaries | ✅ | ❌ |
@@ -77,6 +77,9 @@ Receptionists can see bookings/guests **needed for operations** (today's arrival
 
 ### Phase 3.2 booking enforcement (implemented 2026-11-09)
 `/api/v1/bookings` READ endpoints (`GET`, `GET /{id}`, `GET /availability[/{room_id}]`) require `bookings.read`; `POST` and `PATCH /{id}` require `bookings.write` + CSRF; `POST /{id}/cancel` requires `bookings.cancel` + CSRF. Both ADMIN and RECEPTIONIST hold all three in this milestone (operational workflow); `bookings.checkin` / `bookings.checkout` permissions exist for Phase 4 but no endpoints use them yet. Default-deny preserved: unauthenticated → 401, missing CSRF → 403. Audit: `BOOKING_CREATED`, `BOOKING_UPDATED`, `BOOKING_CANCELLED` with `metadata.fields` only (no PII). Booking responses expose `guest_id`/`room_id`, never guest name/phone/email.
+
+### Phase 4.1 billing enforcement (implemented 2026-11-09)
+`GET /api/v1/bookings/{id}/folio` and `GET /api/v1/bookings/{id}/payments` require `billing.receipts.read` (both roles, D6). Charge and charge-reversal writes (`POST .../folio/charges`, `POST .../folio/reversals`) require `billing.charges.write` + CSRF (both roles, D3). Discount writes (`POST .../folio/discounts`) require `billing.discounts.write` + CSRF and are **ADMIN-only** (D4) — RECEPTIONIST permission removed from the role set; denied calls return 403 with no ledger or audit rows. `billing.payments.write` exists but gates no endpoint until Phase 4.2 (payment reversals remain ADMIN-reserved per D3). Audit: `FOLIO_INITIALIZED`, `FOLIO_CHARGE_ADJUSTED`, `CHARGE_ADDED`, `DISCOUNT_APPLIED`, `REVERSAL_CREATED` appended in the mutation transaction; metadata carries entry/payment ids, signed amounts and reasons only (no PII). Default-deny preserved: unauthenticated → 401, missing permission → 403, missing CSRF → 403.
 
 ## 6. Examples of enforcement checks
 | Endpoint | Required permission |

@@ -67,7 +67,7 @@ jobs:
 
           inspector = inspect(get_engine())
           tables = set(inspector.get_table_names())
-          missing = {"users", "sessions", "audit_log", "guests", "bookings", "alembic_version"} - tables
+          missing = {"users", "sessions", "audit_log", "guests", "bookings", "folio_entries", "payments", "alembic_version"} - tables
           assert not missing, f"missing tables: {missing}"
           cols = {c["name"] for c in inspector.get_columns("users")}
           needed = {"id", "username", "password_hash", "role", "is_active", "created_at", "updated_at"}
@@ -79,11 +79,20 @@ jobs:
           bcols = {c["name"] for c in inspector.get_columns("bookings")}
           bneeded = {"id", "booking_ref", "guest_id", "room_id", "status", "check_in_date", "check_out_date", "nights", "night_rate_snapshot", "room_subtotal", "total_amount"}
           assert bneeded <= bcols, f"bookings table incomplete: {bneeded - bcols}"
+          fcols = {c["name"] for c in inspector.get_columns("folio_entries")}
+          fneeded = {"id", "booking_id", "entry_type", "description", "quantity", "amount", "is_initial", "created_by", "created_at"}
+          assert fneeded <= fcols, f"folio_entries table incomplete: {fneeded - fcols}"
+          pcols = {c["name"] for c in inspector.get_columns("payments")}
+          pneeded = {"id", "booking_id", "amount", "mode", "payment_stage", "received_by", "received_at", "reverses_payment_id"}
+          assert pneeded <= pcols, f"payments table incomplete: {pneeded - pcols}"
           with get_engine().connect() as conn:
               assert conn.execute(text("SELECT 1")).scalar() == 1
               crows = conn.execute(text("SELECT conname FROM pg_constraint WHERE conrelid = 'bookings'::regclass"))
               cnames = {r[0] for r in crows}
               assert "excl_bookings_room_daterange" in cnames, f"missing exclusion constraint: {cnames}"
+              trows = conn.execute(text("SELECT tgname FROM pg_trigger WHERE tgrelid IN ('folio_entries'::regclass, 'payments'::regclass) AND NOT tgisinternal"))
+              tnames = {r[0] for r in trows}
+              assert {"trg_folio_entries_immutable", "trg_payments_immutable"} <= tnames, f"missing immutability triggers: {tnames}"
           print("schema OK:", sorted(tables))
           PY
       - name: PostgreSQL integration tests (must run — skips fail the build)

@@ -67,7 +67,8 @@ _RECEPTIONIST_PERMISSIONS: frozenset[Permission] = frozenset(
         Permission.BOOKINGS_CANCEL,
         Permission.BILLING_CHARGES_WRITE,
         Permission.BILLING_PAYMENTS_WRITE,
-        Permission.BILLING_DISCOUNTS_WRITE,
+        # BILLING_DISCOUNTS_WRITE is ADMIN-only (D4, Phase 4.1): receptionists
+        # never receive it, so discount endpoints deny them by default.
         Permission.BILLING_RECEIPTS_READ,
     }
 )

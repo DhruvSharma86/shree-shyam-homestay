@@ -61,7 +61,15 @@ def test_postgres_schema_contains_auth_tables() -> None:
     """PostgreSQL has users, sessions, audit_log, guests, bookings + key columns."""
     inspector = inspect(get_engine())
     tables = set(inspector.get_table_names())
-    assert {"users", "sessions", "audit_log", "guests", "bookings"} <= tables
+    assert {
+        "users",
+        "sessions",
+        "audit_log",
+        "guests",
+        "bookings",
+        "folio_entries",
+        "payments",
+    } <= tables
 
     user_columns = {c["name"] for c in inspector.get_columns("users")}
     assert {"id", "username", "password_hash", "role", "is_active", "created_at"} <= user_columns
@@ -95,6 +103,30 @@ def test_postgres_schema_contains_auth_tables() -> None:
         "room_subtotal",
         "total_amount",
     } <= booking_columns
+    folio_columns = {c["name"] for c in inspector.get_columns("folio_entries")}
+    assert {
+        "id",
+        "booking_id",
+        "entry_type",
+        "description",
+        "quantity",
+        "amount",
+        "is_initial",
+        "reverses_entry_id",
+        "created_by",
+        "created_at",
+    } <= folio_columns
+    payment_columns = {c["name"] for c in inspector.get_columns("payments")}
+    assert {
+        "id",
+        "booking_id",
+        "amount",
+        "mode",
+        "payment_stage",
+        "received_by",
+        "received_at",
+        "reverses_payment_id",
+    } <= payment_columns
     # Exclusion constraint exists when the DB was created by Alembic
     # (create_all alone does not add it — CI migrates first).
     with get_engine().connect() as conn:
@@ -222,7 +254,10 @@ def _pg_booking_setup(pg_client):
     phone = f"98765{int(suffix, 16) % 100000:05d}"
     db = get_session_factory()()
     try:
-        db.execute(text("DELETE FROM bookings"))
+        # TRUNCATE (not DELETE): the append-only triggers reject DELETE
+        # on finance tables, but TRUNCATE bypasses row triggers and is a
+        # clean test-isolation step.
+        db.execute(text("TRUNCATE payments, folio_entries, bookings"))
         db.execute(text("DELETE FROM users WHERE username = 'pgbookadmin'"))
         create_user(db, username="pgbookadmin", password=ADMIN_PASSWORD, role=UserRole.ADMIN.value)
         db.commit()
@@ -356,3 +391,107 @@ def test_postgres_booking_concurrent_overlap(pg_client) -> None:
     for t in threads:
         t.join(timeout=30)
     assert sorted(results) == ["conflict", "ok"], results
+
+
+def test_postgres_folio_flow(pg_client) -> None:
+    """Folio view, charge, discount and reversal work on PostgreSQL."""
+    from tests.factories import csrf_headers
+
+    room_id, _rt, guest_id, _actor, check_in, check_out = _pg_booking_setup(pg_client)
+    headers = csrf_headers(pg_client)
+    created = pg_client.post(
+        "/api/v1/bookings",
+        json={
+            "guest_id": guest_id,
+            "room_id": room_id,
+            "source": "PHONE",
+            "check_in_date": check_in.isoformat(),
+            "check_out_date": check_out.isoformat(),
+            "number_of_guests": 1,
+        },
+        headers=headers,
+    )
+    assert created.status_code == 201, created.text
+    booking_id = created.json()["id"]
+    folio = pg_client.get(f"/api/v1/bookings/{booking_id}/folio")
+    assert folio.status_code == 200, folio.text
+    body = folio.json()
+    assert len(body["entries"]) == 1 and body["entries"][0]["is_initial"] is True
+    assert body["total_charges"] == "9000.00"
+    charge = pg_client.post(
+        f"/api/v1/bookings/{booking_id}/folio/charges",
+        json={"description": "PG food", "quantity": "1", "unit_amount": "500.00"},
+        headers=headers,
+    )
+    assert charge.status_code == 201, charge.text
+    assert charge.json()["amount"] == "500.00"
+    discount = pg_client.post(
+        f"/api/v1/bookings/{booking_id}/folio/discounts",
+        json={"amount": "100.00", "reason": "pg discount"},
+        headers=headers,
+    )
+    assert discount.status_code == 201, discount.text
+    reversal = pg_client.post(
+        f"/api/v1/bookings/{booking_id}/folio/reversals",
+        json={"entry_id": charge.json()["id"], "reason": "pg undo"},
+        headers=headers,
+    )
+    assert reversal.status_code == 201, reversal.text
+    final = pg_client.get(f"/api/v1/bookings/{booking_id}/folio").json()
+    assert final["total_charges"] == "8900.00", final  # 9000+500-100-500
+
+
+def test_postgres_finance_triggers(pg_client) -> None:
+    """Append-only triggers reject UPDATE/DELETE but allow INSERT."""
+    import pytest
+    from sqlalchemy.exc import IntegrityError
+
+    from app.core.db import get_engine
+    from tests.factories import csrf_headers
+
+    room_id, _rt, guest_id, _actor, check_in, check_out = _pg_booking_setup(pg_client)
+    headers = csrf_headers(pg_client)
+    created = pg_client.post(
+        "/api/v1/bookings",
+        json={
+            "guest_id": guest_id,
+            "room_id": room_id,
+            "source": "PHONE",
+            "check_in_date": check_in.isoformat(),
+            "check_out_date": check_out.isoformat(),
+            "number_of_guests": 1,
+        },
+        headers=headers,
+    )
+    assert created.status_code == 201, created.text
+    booking_id = created.json()["id"]
+    engine = get_engine()
+    # Triggers must exist (migrated schema, not create_all-only).
+    with engine.connect() as conn:
+        names = {
+            r[0]
+            for r in conn.execute(
+                text(
+                    "SELECT tgname FROM pg_trigger WHERE tgrelid IN "
+                    "('folio_entries'::regclass, 'payments'::regclass) AND NOT tgisinternal"
+                )
+            )
+        }
+        assert "trg_folio_entries_immutable" in names, names
+        assert "trg_payments_immutable" in names, names
+    entry_id = pg_client.get(f"/api/v1/bookings/{booking_id}/folio").json()["entries"][0]["id"]
+    with pytest.raises(IntegrityError):
+        with engine.begin() as conn:
+            conn.execute(
+                text("UPDATE folio_entries SET amount = 1 WHERE id = :id"), {"id": entry_id}
+            )
+    with pytest.raises(IntegrityError):
+        with engine.begin() as conn:
+            conn.execute(text("DELETE FROM folio_entries WHERE id = :id"), {"id": entry_id})
+    # INSERT still allowed: API reversal succeeds afterwards.
+    rev = pg_client.post(
+        f"/api/v1/bookings/{booking_id}/folio/reversals",
+        json={"entry_id": entry_id, "reason": "pg trigger check"},
+        headers=headers,
+    )
+    assert rev.status_code == 201, rev.text

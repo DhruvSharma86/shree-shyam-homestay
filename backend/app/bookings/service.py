@@ -21,6 +21,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session as DBSession
 
 from app.auth.service import write_audit
+from app.billing.service import adjust_initial_charge_for_resnapshot, ensure_initial_charge
 from app.models.booking import Booking, BookingSource, BookingStatus
 from app.models.guest import Guest
 from app.models.room import Room, RoomOperationalStatus
@@ -229,6 +230,9 @@ def create_booking(
         actor_user_id=actor_user_id,
         metadata={"fields": ["guest_id", "room_id", "check_in_date", "check_out_date"]},
     )
+    # Initialize the folio with the single snapshot room charge — same
+    # transaction, so booking and ledger are always consistent.
+    ensure_initial_charge(db, booking, actor_user_id=actor_user_id)
     return booking
 
 
@@ -285,6 +289,9 @@ def update_booking(
         booking.tax_type_snapshot = tax_type
         booking.tax_rate_snapshot = tax_rate
         booking.tax_pricing_mode_snapshot = tax_mode
+        # Stay length changed — keep the folio consistent with the new
+        # snapshot without touching historical entries (append-only).
+        adjust_initial_charge_for_resnapshot(db, booking, actor_user_id=actor_user_id)
     if number_of_guests is not None:
         booking.number_of_guests = number_of_guests
         changed.append("number_of_guests")
