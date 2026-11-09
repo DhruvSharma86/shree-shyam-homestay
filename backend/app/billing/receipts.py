@@ -174,12 +174,21 @@ def render_receipt_pdf(
         story.append(rev_table)
     story.append(Spacer(1, 4 * mm))
     story.append(Paragraph("<b>Totals</b>", styles["Heading3"]))
-    if booking.tax_type_snapshot != "NONE":
+    if booking.tax_type_snapshot == "NONE":
+        story.append(
+            Paragraph(
+                "TAX: does not apply under the approved configuration (default NONE). "
+                "No tax amount has been calculated or charged in this receipt.",
+                styles["Normal"],
+            )
+        )
+    else:
         rate = booking.tax_rate_snapshot
         story.append(
             Paragraph(
-                f"Tax configuration at booking: {booking.tax_type_snapshot} rate {rate} "
-                f"({booking.tax_pricing_mode_snapshot}). No tax amount has been charged "
+                f"TAX: a tax configuration exists ({booking.tax_type_snapshot} at {rate}% "
+                f"per night, {booking.tax_pricing_mode_snapshot}); its calculation is not "
+                "implemented yet, so no tax amount or liability has been determined or charged "
                 "in this receipt.",
                 styles["Normal"],
             )

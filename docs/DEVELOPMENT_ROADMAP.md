@@ -1,7 +1,7 @@
 # Development Roadmap — Shree Shyam Home Stay
 
-> **Current status: Phase 4.3 (Checkout settlement, final billing & PDF receipts, backend) — ✅ complete.**
-> Phases 1–3 are closed and PostgreSQL-verified. Phase 4.2 added payment recording, ADMIN reversals and the one-night check-in rule; Phase 4.3 closes the loop with zero-balance checkout settlement, immutable FINAL receipts (PostgreSQL bytes + SHA-256), authorized PDF downloads, post-checkout immutability, and Git artifact hygiene (`*.db` ignores + CI guard) — backend tests green; PostgreSQL verified via GitHub Actions (see CI). No reports, messaging, portal or frontend in this milestone. Tax remains default NONE (no GST invented).
+> **Current status: Phase 4.4 (Financial reporting & reconciliation, backend) — ✅ complete.**
+> Phases 1–3 are closed and PostgreSQL-verified. Phase 4.3 closed the checkout loop with immutable FINAL receipts; Phase 4.4 adds ADMIN read-only reporting — financial summary, collections, payment methods, outstanding/credits (live snapshot), period reconciliation, reversals detail, booking status counts and occupancy — all derived from the ledger with Decimal math, UTC date bounds, CSV exports for two reports, and PostgreSQL receipts-immutability triggers — backend tests green; PostgreSQL verified via GitHub Actions (see CI). No dashboards, messaging, portal or frontend in this milestone. Tax remains default NONE (no GST invented).
 
 ## Phase 0 — Documentation & design ✅ (this milestone)
 - [x] README, SRS, Architecture, Database, RBAC, Booking/Billing workflows, Guest portal, API design, Roadmap
@@ -87,6 +87,13 @@
 - [x] **189 tests passing, 12 skipped** (SQLite; 4 PG checkout/receipt tests skip locally, enforced in CI); Alembic upgrade/downgrade clean on SQLite; PostgreSQL tests run in CI with fail-if-skip guard
 - **Exit criteria met (backend):** settled checkout with immutable receipts, ledger-derived zero balance, auditable downloads, hardened artifact hygiene. No NO_SHOW, reports, messages, portal or frontend.
 - Next: Phase 4.4 (financial reporting) — do not start automatically.
+
+#### Phase 4.4 — Financial reporting & reconciliation ✅ (complete, 2026-11-09)
+- [x] Receipt preflight: explicit three-state tax wording (NONE vs configured-but-uncalculated vs calculated — never "zero liability"), PostgreSQL receipts immutability (`trg_receipts_immutable`, verified by UPDATE/DELETE rejection)
+- [x] `app/reports/` read-only module: financial summary, daily collections (method×stage), payment-method breakdown, live outstanding/credits, period reconciliation, reversals detail, booking status counts, occupancy — all Decimal, no report tables, no guest PII; CSV exports reuse the same queries
+- [x] **203 tests passing, 12 skipped** (SQLite; PG reports aggregation + receipts-immutability tests skip locally, enforced in CI); Alembic upgrade/downgrade clean on SQLite; PostgreSQL tests run in CI with fail-if-skip guard
+- **Exit criteria met (backend):** reconciliation traceable to source records, outstanding credits distinguished, occupancy defined and timezone-unshifted (UTC, documented), read-only guarantees tested. No dashboards, messaging, portal or frontend.
+- Next: Phase 5 (guest portal) — do not start automatically.
 
 - Folio engine (charges, discounts with limits, reversals), payments (advance/check-in/checkout, cash/UPI/card), transactions
 - Tax computation from settings; ReportLab PDF receipts (payment + final)

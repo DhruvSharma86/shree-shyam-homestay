@@ -73,10 +73,11 @@ Balance due = Σ(folio_entries.amount) − Σ(payments.amount)
 - `PAYMENT` receipt: reserved kind; not issued.
 - Staff/audited downloads at `GET /receipt` (metadata) and `GET /receipt/download` (PDF, `no-store`); the guest copy arrives later via the portal (Phase 5).
 
-## 9. Financial reporting (ADMIN only)
+## 9. Financial reporting (ADMIN only) — ✅ Implemented (Phase 4.4)
 - Daily/monthly revenue, payments by mode, outstanding balances, discount totals, cancellations.
-- Reports read from append-only tables — numbers are reproducible and auditable.
-- Exports (CSV/PDF) — TBD.
+- Reports read from append-only tables — numbers are reproducible and auditable (`GET /api/v1/reports/financial/*`, ADMIN-only; see `API_DESIGN.md` §5e).
+- Exports (CSV/PDF) — CSV implemented (collections/outstanding, same queries); PDF report export not implemented.
+- Label discipline: the reports expose **ledger measures** (`gross_charges`, `net_payments`, `outstanding`), not accrual revenue; no tax treatment is computed anywhere.
 
 ## 10. Worked example (illustrative amounts only)
 > 3-night stay, rate snapshot ₹2,000/night (example). Folio: ROOM_CHARGE 3×2,000 = 6,000. Restaurant 450. Discount −200 (reason: "returning guest"). Total = 6,250. Advance 500, check-in 2,000, checkout 3,750 → balance 0. Receipt generated; token expires +24h. *(All figures are placeholders — real rates configured by ADMIN.)*

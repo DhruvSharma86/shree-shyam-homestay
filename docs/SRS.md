@@ -150,6 +150,8 @@ Modular monolith backend (FastAPI) + separate Next.js frontend, PostgreSQL datab
 | FR-REP-03 | Important administrative actions (user changes, price/tax changes, discounts, voids) MUST be audit-logged (who, what, when, before/after). |
 | FR-REP-04 | Audit logs MUST be append-only and admin-viewable. |
 
+**Phase 4.4 status (implemented 2026-11-09, backend only):** ADMIN financial reports: summary (ledger measures for the period), daily collections (date×method×stage), payment-method breakdown, live outstanding/credits (point-in-time), period reconciliation, reversals detail, booking status counts and occupancy (cancelled excluded). All read-only, Decimal, CSV exports reuse the same queries. Audit viewer remains deferred (audit rows write-only so far). Tax, messaging, portal and frontend remain deferred.
+
 ## 4. Non-functional requirements
 
 | ID | Requirement |

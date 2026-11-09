@@ -163,6 +163,8 @@ Positive = charge; negative = discount/reversal (keeps balance math simple: bala
 
 **Why bytes-in-DB vs `file_path`:** the earlier design sketch assumed a `file_path` column; Phase 4.3 instead stores the PDF bytes directly (deviation documented here). For a six-room property this avoids filesystem configuration, path traversal and permission concerns entirely while remaining reproducible (identical bytes on every download). `kind = 'PAYMENT'` is reserved for a possible per-payment issuance; no such issuance exists yet.
 
+**Immutability:** migration `c0d1e2f3a4b5` (Phase 4.4 preflight) installs `trg_receipts_immutable` (BEFORE UPDATE/DELETE) reusing `reject_financial_mutation()`. Issued receipts (bytes + hash) cannot be silently rewritten or removed. Downgrade drops the trigger only; SQLite has no trigger equivalent (service-layer only there, explicitly asserted in `test_sqlite_has_no_immutability_trigger`).
+
 **Checkout columns (Phase 4.3, same migration):** `bookings.checked_out_at TIMESTAMPTZ NULL`, `bookings.checked_out_by UUID NULL`; `status` widens to include `CHECKED_OUT`. Receipt rows and the transition commit atomically — a failed PDF render leaves no receipt row and no status change.
 
 ### 2.16 `public_content`
@@ -192,7 +194,8 @@ bookings ──< message_log
 - Check constraints: bookings `check_out_date > check_in_date`, `nights >= 1`, `number_of_guests >= 1`, money `>= 0`; financial: `payments.amount > 0`, `folio_entries.amount <> 0`, `quantity > 0`, negative only for DISCOUNT/REVERSAL (service-validated).
 - Unique: `users.username`, `rooms.room_number`, `bookings.booking_ref`, `ux_folio_initial_room_charge (booking_id) WHERE is_initial`; (Phase 5 adds `bookings.guest_token_hash`).
 - Indexes: `bookings(room_id, status, check_in_date, guest_id, room_type_id)`; `folio_entries(booking_id, entry_type, reverses_entry_id)`, `payments(booking_id, reverses_payment_id)`; `guests(phone)`, `audit_log(created_at)`, `sessions(user_id)`.
-- PostgreSQL-only: exclusion constraint `excl_bookings_room_daterange` on `bookings` (see §2.10); immutability triggers `trg_folio_entries_immutable`, `trg_payments_immutable` (see §2.11/§2.12); not present in SQLite/ORM metadata.
+- PostgreSQL-only: exclusion constraint `excl_bookings_room_daterange` on `bookings` (see §2.10); immutability triggers `trg_folio_entries_immutable`, `trg_payments_immutable`, `trg_receipts_immutable` (see §2.11/§2.12/§2.15); not present in SQLite/ORM metadata.
+- Reporting (`app/reports/`) is read-only and derives everything from the tables above — no report tables, no stored counters, no dedicated indexes beyond the existing FK/stage indexes (aggregation is trivial at 6-room scale).
 
 ## 5. Migrations
 - Alembic autogenerate is a starting point only — **every migration reviewed manually** before merge.

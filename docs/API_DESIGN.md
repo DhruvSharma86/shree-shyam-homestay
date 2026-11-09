@@ -101,12 +101,20 @@ Create body: `{guest_id, room_id, source: PHONE|WALK_IN (default PHONE), check_i
 
 Financial writes and their audit rows commit in the same transaction; audit metadata carries entry/payment ids, amounts, modes, stages and reasons only (no guest PII). Balances are always derived with `Decimal` (total_paid is net of reversal records); no stored running total.
 
-### 3.6 Reports & audit (ADMIN only)
-| Endpoint | Method | Permission |
+### 3.6 Reports (ADMIN only — `reports.financial.read`, read-only) — ✅ Phase 4.4
+| Endpoint | Method | Notes |
 |---|---|---|
-| `/reports/financial` | GET `?from=&to=` | `reports.financial.read` |
-| `/reports/occupancy` | GET `?from=&to=` | `reports.financial.read` |
-| `/audit-log` | GET `?actor=&action=&from=&to=` | `audit.read` |
+| `/reports/financial/summary` | GET `?from_date=&to_date=` | ledger measures for the period (UTC) — see §5e |
+| `/reports/financial/collections` | GET `?from_date=&to_date=` | daily × (method, stage) collections |
+| `/reports/financial/collections/export.csv` | GET | same source, deterministic CSV |
+| `/reports/financial/payment-methods` | GET `?from_date=&to_date=` | whole-period method breakdown |
+| `/reports/financial/outstanding` | GET `?page=&page_size=` | **live snapshot** folios with non-zero balances |
+| `/reports/financial/outstanding/export.csv` | GET | same source, deterministic CSV |
+| `/reports/financial/reconciliation` | GET `?from_date=&to_date=` | period charges vs originals vs reversals vs net |
+| `/reports/financial/reversals` | GET `?from_date=&to_date=&page=&page_size=` | linked charge + payment reversal rows |
+| `/reports/bookings/summary` | GET `?from_date=&to_date=` | status counts for stays overlapping the period |
+| `/reports/bookings/occupancy` | GET `?from_date=&to_date=` | occupied vs available room-nights |
+| `/audit-log` | GET `?actor=&action=&from=&to=` | **Deferred** — audit rows exist, the viewer in Phase 6 |
 
 ### 3.7 Messaging (`billing`/`bookings` context; ADMIN config)
 | Endpoint | Method | Notes |
@@ -165,8 +173,16 @@ Financial writes and their audit rows commit in the same transaction; audit meta
 - **Checkout:** `POST /bookings/{id}/check-out` (`bookings.checkout`, both roles, CSRF) — `CHECKED_IN` only; cancelled → 422; CONFIRMED → 422; already `CHECKED_OUT` → 422 (duplicate). Transition + `checked_out_at/by` + audits + receipt persistence commit atomically under a booking-row `SELECT … FOR UPDATE` lock (concurrent checkouts: exactly one wins).
 - **Settlement:** balance is re-derived from the ledger (authoritative `folio_totals()` — no recompute, no stored total). Positive balance → 422 listing the amount. Negative balance (credit) → 422 pending the refund/write-off workflow (not implemented).
 - **Immutability after checkout:** every folio/payment mutation checks `CHECKED_OUT` via the folio-closed guard (→ 409) in the service layer; PATCH on a checked-out booking stays blocked with the pre-existing non-CONFIRMED rule (422).
-- **Receipt:** FINAL receipt rendered in-memory by ReportLab (hotel fields only when configured; `INR` grouping, 2dp Decimals, Helvetica embedded font; tax configuration shown as a note when `tid` snapshot ≠ NONE — no liability calculated, D5), PDF bytes stored in PostgreSQL with `content_hash` (partial unique on FINAL per booking). Same bytes on every download; no filesystem paths, no traversal surface, `application/pdf`, `attachment; filename="RCPT-XXXXXXXX.pdf"`, `Cache-Control: no-store`. `GET /receipt` returns metadata; `GET /receipt/download` audits `RECEIPT_DOWNLOADED` first, then serves the stored bytes.
+- **Receipt:** FINAL receipt rendered in-memory by ReportLab (hotel fields only when configured; `INR` grouping, 2dp Decimals, Helvetica embedded font; tax configuration shown as a note when the tax snapshot ≠ NONE — no liability calculated, D5), PDF bytes stored in PostgreSQL with `content_hash` (partial unique on FINAL per booking). Same bytes on every download; no filesystem paths, no traversal surface, `application/pdf`, `attachment; filename="RCPT-XXXXXXXX.pdf"`, `Cache-Control: no-store`. `GET /receipt` returns metadata; `GET /receipt/download` audits `RECEIPT_DOWNLOADED` first, then serves the stored bytes.
 - **Failure semantics:** a PDF render failure aborts the transaction — no status change, no receipt, no checkout (recoverable by retrying after fixing the cause).
+
+## 5e. Phase 4.4 reporting (implemented)
+- **Date model:** `from_date/to_date` are calendar dates interpreted as a **half-open UTC range** `[from, to + 1 day)` — an entry received exactly on `to` belongs to the period. `hotel_info` carries no timezone setting, so UTC is the documented assumption (no IST inference).
+- **Formulas:** `financial_summary` groups entry amounts by kind (`room_charges`, `additional_charges`, `discounts`, `charge_reversals`, `gross_charges` = room + additional) and computes `net_payments` (received originals minus received reversals) and `outstanding = charges − net` **for the period**. These are ledger measures, not accrued revenue: `gross_charges`/`net_payments` are gross of any other accounting treatment, and no tax accrual is computed (D5 — tax config NONE by default).
+- **Collections / methods:** reversal rows always reduce the same (date, method/stage) they belong to (originals and reversals are shown separately **and netted** — a reversal is never counted as fresh money). `collections/export.csv` and `outstanding/export.csv` reuse the exact same service queries as the JSON reports; columns are enums/dates/numbers only (no free text), so formula injection is impossible; sanitized anyway for defence in depth. `Cache-Control: no-store`.
+- **Outstanding:** a **live snapshot** (current ledger state, not a historical reconstruction), non-cancelled bookings with balance ≠ 0, sorted most-owed first, paginated; checked-out (settled) bookings have zero balance by construction and never appear. Credits (`balance < 0`) are reported as `credit_total`, clearly distinct from outstanding dues.
+- **Reconciliation:** period-only traceability: `charge_entries = Σ entries`, `original_payments`, `reversal_payments`, `net_payments`, `outstanding_in_period`, `credit_in_period`, plus row counts; discrepancies would be visible here rather than silently adjusted (no repair is performed).
+- **Bookings:** stays overlapping `[from, to + 1)` under the `[check-in, check-out)` convention; cancelled counted separately. **Occupancy:** occupied = stay-segment nights of non-cancelled bookings clipped to the range (double bookings are structurally impossible on one room); capacity = active + AVAILABLE rooms × days in range (assumes every active room was available all period — maintenance schedules are not stored, a documented limitation).
 
 ## 6. Non-goals
 - No GraphQL, no websockets, no webhooks (v1). No public API for third parties.

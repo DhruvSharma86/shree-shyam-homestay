@@ -517,6 +517,96 @@ def test_postgres_finance_triggers(pg_client) -> None:
     assert rev.status_code == 201, rev.text
 
 
+def test_postgres_receipts_immutable(pg_client) -> None:
+    """Issued receipts reject UPDATE/DELETE on PostgreSQL (triggers protect bytes)."""
+    import uuid
+
+    import pytest
+    from sqlalchemy.exc import DBAPIError
+
+    from app.core.db import get_engine
+    from tests.factories import csrf_headers
+
+    room_id, _rt, guest_id, _actor, check_in, check_out = _pg_booking_setup(pg_client)
+    headers = csrf_headers(pg_client)
+    booking_id = _pg_create_booking(pg_client, headers, room_id, guest_id, check_in, check_out)
+    pg_client.post(
+        f"/api/v1/bookings/{booking_id}/payments",
+        json={"amount": "3000.00", "mode": "UPI", "payment_stage": "CHECK_IN"},
+        headers=headers,
+    )
+    pg_client.post(
+        f"/api/v1/bookings/{booking_id}/payments",
+        json={"amount": "6000.00", "mode": "CASH", "payment_stage": "OTHER"},
+        headers=headers,
+    )
+    checked = pg_client.post(
+        f"/api/v1/bookings/{booking_id}/check-in", json={}, headers=headers
+    )
+    assert checked.status_code == 200, checked.text
+    out = pg_client.post(
+        f"/api/v1/bookings/{booking_id}/check-out", json={}, headers=headers
+    )
+    assert out.status_code == 200, out.text
+    receipt_id = pg_client.get(f"/api/v1/bookings/{booking_id}/receipt").json()["receipt_id"]
+    engine = get_engine()
+    with engine.connect() as conn:
+        names = {
+            r[0]
+            for r in conn.execute(
+                text("SELECT tgname FROM pg_trigger WHERE tgrelid = 'receipts'::regclass")
+            )
+        }
+        assert "trg_receipts_immutable" in names, names
+    with pytest.raises(DBAPIError):
+        with engine.begin() as conn:
+            conn.execute(
+                text("UPDATE receipts SET content_hash = 'x' WHERE id = :id"),
+                {"id": uuid.UUID(receipt_id)},
+            )
+    with pytest.raises(DBAPIError):
+        with engine.begin() as conn:
+            conn.execute(text("DELETE FROM receipts WHERE id = :id"), {"id": uuid.UUID(receipt_id)})
+    # Issued receipt survives (bytes unchanged).
+    assert pg_client.get(f"/api/v1/bookings/{booking_id}/receipt").status_code == 200
+
+
+def test_postgres_report_aggregations(pg_client) -> None:
+    """SUM aggregations + Decimal correctness on PostgreSQL."""
+    from datetime import timedelta
+    from decimal import Decimal
+
+    from sqlalchemy import select
+
+    from app.core.db import get_session_factory
+    from app.models.payment import Payment
+    from tests.factories import csrf_headers
+
+    room_id, _rt, guest_id, _actor, check_in, check_out = _pg_booking_setup(pg_client)
+    headers = csrf_headers(pg_client)
+    booking_id = _pg_create_booking(pg_client, headers, room_id, guest_id, check_in, check_out)
+    pg_client.post(
+        f"/api/v1/bookings/{booking_id}/payments",
+        json={"amount": "3000.00", "mode": "UPI", "payment_stage": "CHECK_IN"},
+        headers=headers,
+    )
+    today = check_in - timedelta(days=1)
+    summary = pg_client.get(
+        f"/api/v1/reports/financial/summary?from_date={today.isoformat()}&to_date={today.isoformat()}"
+    )
+    assert summary.status_code == 200, summary.text
+    body = summary.json()
+    assert body["room_charges"] == "9000.00"
+    assert body["net_payments"] == "3000.00"
+    assert body["outstanding"] == "6000.00"
+    db = get_session_factory()()
+    try:
+        db_sum = db.scalars(select(Payment.amount).where(Payment.booking_id == booking_id)).all()
+        assert sum(db_sum, Decimal(0)) == Decimal("3000.00")
+    finally:
+        db.close()
+
+
 def _pg_create_booking(pg_client, headers, room_id, guest_id, check_in, check_out):
     """Create a booking on PG and return its id."""
     created = pg_client.post(

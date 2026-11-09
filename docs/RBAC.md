@@ -87,6 +87,9 @@ Receptionists can see bookings/guests **needed for operations** (today's arrival
 ### Phase 4.3 checkout & receipt enforcement (implemented 2026-11-09)
 `POST /api/v1/bookings/{id}/check-out` requires `bookings.checkout` + CSRF (both roles). `GET /api/v1/bookings/{id}/receipt` and `GET /api/v1/bookings/{id}/receipt/download` require `billing.receipts.read` (both roles, D6) — staff-only, no public links; downloads audit `RECEIPT_DOWNLOADED`. Checkout audits `CHECKOUT_COMPLETED` and `RECEIPT_ISSUED` in the settlement transaction; metadata carries booking/receipt ids and totals/hash only (no PII). Financial reports remain ADMIN-only (`reports.financial.read`).
 
+### Phase 4.4 report enforcement (implemented 2026-11-09)
+Every `/api/v1/reports/*` endpoint (financial summary/collections/methods/outstanding/reconciliation/reversals, bookings summary/occupancy, and both CSV exports) requires `reports.financial.read`, which is **ADMIN-only** — RECEPTIONIST receives 403 and unauthenticated 401 (default-deny preserved). Reports are GET-only (no mutation endpoints exist), so CSRF does not apply (no state change). No guest PII is returned (only booking references, room numbers, statuses).
+
 ## 6. Examples of enforcement checks
 | Endpoint | Required permission |
 |---|---|
