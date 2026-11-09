@@ -19,7 +19,7 @@ so all reporting treats timestamps as UTC (documented assumption).
 
 import uuid
 from collections import defaultdict
-from datetime import date, datetime, time, timedelta
+from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal
 from typing import Any
 
@@ -41,8 +41,14 @@ def _bounds(
     """Validate and convert [from, to] to a half-open UTC range."""
     if from_date is not None and to_date is not None and from_date > to_date:
         raise ValueError("from_date must be on or before to_date.")
-    start = datetime.combine(from_date, time.min) if from_date is not None else None
-    end = datetime.combine(to_date, time.min) + timedelta(days=1) if to_date is not None else None
+    if from_date is None:
+        start = None
+    else:
+        start = datetime.combine(from_date, time.min, tzinfo=timezone.utc)
+    if to_date is None:
+        end = None
+    else:
+        end = datetime.combine(to_date, time.min, tzinfo=timezone.utc) + timedelta(days=1)
     return start, end
 
 
