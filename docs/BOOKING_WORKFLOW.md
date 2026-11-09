@@ -4,8 +4,8 @@ Bookings originate from **telephone calls or walk-ins only**. No online booking 
 
 ## 1. Lifecycle state machine
 
-**Phase 4.2 status (implemented 2026-11-09, backend only):**
-check-in exists as `CONFIRMED → CHECKED_IN` (`bookings.checkin`, both roles), gated by the mandatory one-night CHECK_IN payment rule (stored snapshot, stage-scoped). Payments, overpayment authorization and ADMIN payment reversals are live (see `docs/BILLING_WORKFLOW.md`). Checkout/no-show/settlement remain deferred (Phase 4.3–4.4).
+**Phase 4.3 status (implemented 2026-11-09, backend only):**
+checkout exists as `CHECKED_IN → CHECKED_OUT` (zero balance, FINAL receipt persisted as immutable PDF bytes with a content hash; settlement, receipt endpoints). Post-checkout financial mutations are barred in the service layer. Token expiry window stays Phase 5+ (no portal); messaging remains deferred.
 
 ```
                  ┌──────────┐
@@ -28,8 +28,8 @@ CONFIRMED ──(check-in date passes, no check-in recorded)──▶ NO_SHOW (m
 | → `CONFIRMED` | RECEPTIONIST / ADMIN | Guest exists **and is active**; room available for full date range; rate snapshot taken |
 | `CONFIRMED` → `CHECKED_IN` | RECEPTIONIST / ADMIN | One-night rule (D2): net `CHECK_IN`-stage payments ≥ stored `night_rate_snapshot`, all under one booking lock; timestamp + actor recorded |
 | `CONFIRMED` → `CANCELLED` | RECEPTIONIST / ADMIN | Cancellation policy applied (fees **TBD** — no fee rules invented); room released immediately |
-| `CHECKED_IN` → `CHECKED_OUT` | RECEPTIONIST / ADMIN | **Phase 4.3** — balance settled; receipt generated |
-| `CONFIRMED` → `NO_SHOW` | RECEPTIONIST / ADMIN | **Phase 4.3** — manual flag after check-in date passes without arrival |
+| `CHECKED_IN` → `CHECKED_OUT` | RECEPTIONIST / ADMIN | Zero balance only (positive/negative rejected); FINAL receipt issued atomically; terminal state |
+| `CONFIRMED` → `NO_SHOW` | RECEPTIONIST / ADMIN | **Phase 4.4** — manual flag after check-in date passes without arrival |
 
 `CHECKED_OUT`, `CANCELLED`, `NO_SHOW` are terminal — bookings cannot be reopened (a new booking is created instead). Repeated cancels in Phase 3.2 are idempotent (return `200` with status `CANCELLED`, no new audit row). PATCH on a cancelled booking → `422`.
 

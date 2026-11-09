@@ -218,9 +218,11 @@ def adjust_initial_charge_for_resnapshot(
 
 
 def _require_open_folio(booking: Booking) -> None:
-    """Ledger mutations are forbidden once the booking is cancelled."""
+    """Ledger mutations are forbidden once the booking is closed."""
     if booking.status == "CANCELLED":
         raise FolioClosedError("Booking is cancelled; its folio is read-only history.")
+    if booking.status == "CHECKED_OUT":
+        raise FolioClosedError("Booking is checked out; its folio is final and immutable.")
 
 
 def _charges_after(db: DBSession, booking_id: uuid.UUID, extra_amount: Decimal) -> Decimal:

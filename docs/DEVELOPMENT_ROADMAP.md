@@ -1,7 +1,7 @@
 # Development Roadmap — Shree Shyam Home Stay
 
-> **Current status: Phase 4.2 (Payment recording & check-in management, backend) — ✅ complete.**
-> Phases 1–3 are closed and PostgreSQL-verified. Phase 4.1 delivered the append-only folio/ledger foundation; Phase 4.2 adds read-only folio reads with explicit backfill, payment recording with D9 overpayment authorization, ADMIN-only payment reversals, and the `CHECKED_IN` lifecycle with the mandatory one-night CHECK_IN payment rule (stored snapshot), all with booking-row locks and PG trigger immutability — backend tests green; PostgreSQL verified via GitHub Actions (see CI). No checkout settlement, PDFs, frontend or reports in this milestone.
+> **Current status: Phase 4.3 (Checkout settlement, final billing & PDF receipts, backend) — ✅ complete.**
+> Phases 1–3 are closed and PostgreSQL-verified. Phase 4.2 added payment recording, ADMIN reversals and the one-night check-in rule; Phase 4.3 closes the loop with zero-balance checkout settlement, immutable FINAL receipts (PostgreSQL bytes + SHA-256), authorized PDF downloads, post-checkout immutability, and Git artifact hygiene (`*.db` ignores + CI guard) — backend tests green; PostgreSQL verified via GitHub Actions (see CI). No reports, messaging, portal or frontend in this milestone. Tax remains default NONE (no GST invented).
 
 ## Phase 0 — Documentation & design ✅ (this milestone)
 - [x] README, SRS, Architecture, Database, RBAC, Booking/Billing workflows, Guest portal, API design, Roadmap
@@ -78,6 +78,15 @@
 - [x] **179 tests passing, 10 skipped** (SQLite; PG payment/concurrency tests skip locally, enforced in CI); Alembic upgrade/downgrade clean on SQLite; PostgreSQL tests run in CI with fail-if-skip guard
 - **Exit criteria met (backend):** payments recorded and reversed (ADMIN), overpayment gated, check-in enforced, GET read-only, RBAC/audit. No checkout settlement, PDFs, messages, frontend or reports.
 - Next: Phase 4.3 (settlement, checkout and receipts) — do not start automatically.
+
+#### Phase 4.3 — Checkout settlement, final billing & PDF receipts ✅ (complete, 2026-11-09)
+- [x] Git hygiene: `*.db`/`*.sqlite*` ignores + `Reject tracked database artifacts` CI guard; no database artifacts tracked (previous leaked scratch files already removed in `9576319`/`11d0a62` — history not rewritten)
+- [x] `CHECKED_OUT` lifecycle (`checked_out_at/by`, migration `b9c0d1e2f3a4`), zero-balance-only settlement (positive/negative rejected), booking-row lock, atomic checkout + receipt + `CHECKOUT_COMPLETED`/`RECEIPT_ISSUED` audits, post-checkout service-layer immutability
+- [x] Final receipt: `receipts` table (PostgreSQL bytes + SHA-256), ReportLab `INR` formatting, `GET /receipt` + authorized `GET /receipt/download` (`no-store`), historical reproducibility (identical bytes, later config edits don't change issued receipt)
+- [x] Tax still default NONE — no GST/percentages invented; receipts show configured tax state without calculating liability (needs a separate approval)
+- [x] **189 tests passing, 12 skipped** (SQLite; 4 PG checkout/receipt tests skip locally, enforced in CI); Alembic upgrade/downgrade clean on SQLite; PostgreSQL tests run in CI with fail-if-skip guard
+- **Exit criteria met (backend):** settled checkout with immutable receipts, ledger-derived zero balance, auditable downloads, hardened artifact hygiene. No NO_SHOW, reports, messages, portal or frontend.
+- Next: Phase 4.4 (financial reporting) — do not start automatically.
 
 - Folio engine (charges, discounts with limits, reversals), payments (advance/check-in/checkout, cash/UPI/card), transactions
 - Tax computation from settings; ReportLab PDF receipts (payment + final)

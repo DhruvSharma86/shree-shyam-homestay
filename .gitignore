@@ -9,3 +9,12 @@ __pycache__/
 .venv/
 node_modules/
 Git-Auto-Commit-Push.cmd
+
+# Temporary SQLite/local database artifacts — never committed (Phase 4.3
+# hygiene: scratch databases such as mig*.db must stay untracked).
+*.db
+*.sqlite
+*.sqlite3
+*-journal
+*-wal
+*-shm

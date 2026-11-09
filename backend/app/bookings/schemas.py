@@ -61,6 +61,20 @@ class BookingCancel(BaseModel):
     reason: str | None = None
 
 
+class CheckoutResponse(BaseModel):
+    """Checkout settlement summary (status transition + receipt handle)."""
+
+    booking_id: uuid.UUID
+    booking_ref: str
+    status: str
+    checked_out_at: str
+    total_charges: Decimal
+    total_paid: Decimal
+    balance_due: Decimal
+    receipt_ref: str
+    content_hash: str
+
+
 class CheckInRequest(BaseModel):
     """Check-in payload (note optional — early check-in policy TBD)."""
 

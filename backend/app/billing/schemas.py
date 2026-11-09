@@ -72,6 +72,16 @@ class PaymentReversalCreate(BaseModel):
     reason: str = Field(min_length=1, max_length=1000)
 
 
+class ReceiptResponse(BaseModel):
+    """Issued final-receipt metadata (download via the download endpoint)."""
+
+    receipt_id: uuid.UUID
+    booking_id: uuid.UUID
+    receipt_ref: str
+    kind: str
+    content_hash: str
+
+
 class PaymentResponse(BaseModel):
     """One payment record (read-only in Phase 4.1)."""
 

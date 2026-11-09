@@ -88,7 +88,7 @@ Duplicate rule: one **active** guest per `(phone, lower(full_name))` — stored 
 | guest_id | FK → guests RESTRICT INDEXED | must be an **active** guest at creation |
 | room_id | FK → rooms RESTRICT INDEXED | allocated room (must be active + AVAILABLE) |
 | room_type_id | FK → room_types RESTRICT INDEXED | stamped from the room at creation/reallocation |
-| status | VARCHAR(16) INDEXED | `CONFIRMED`, `CHECKED_IN` (Phase 4.2) or `CANCELLED` |
+| status | VARCHAR(16) INDEXED | `CONFIRMED`, `CHECKED_IN` (Phase 4.2), `CHECKED_OUT` (Phase 4.3) or `CANCELLED` |
 | source | VARCHAR(16) | `PHONE` or `WALK_IN` (no online source exists) |
 | check_in_date | DATE INDEXED | inclusive |
 | check_out_date | DATE | exclusive; CHECK `check_out_date > check_in_date` |
@@ -108,6 +108,8 @@ Duplicate rule: one **active** guest per `(phone, lower(full_name))` — stored 
 | cancellation_reason | TEXT NULL | optional reason (policy TBD) |
 | checked_in_at | TIMESTAMPTZ NULL | set at check-in (Phase 4.2) |
 | checked_in_by | UUID NULL | actor at check-in (Phase 4.2) |
+| checked_out_at | TIMESTAMPTZ NULL | set at checkout (Phase 4.3) |
+| checked_out_by | UUID NULL | actor at checkout (Phase 4.3) |
 
 Not in Phase 3.2 (deferred): `guest_token_hash`, `checkout_at`, folio/payment links — added by later milestones. No guest PII is copied into the booking; `guest_id` is the only link.
 
@@ -156,8 +158,12 @@ Positive = charge; negative = discount/reversal (keeps balance math simple: bala
 ### 2.14 `message_log`
 `id`, `booking_id FK NULL`, `channel VARCHAR(16)` ('WHATSAPP'), `message_type VARCHAR(32)`, `recipient_phone`, `status ENUM('QUEUED','SENT','FAILED','MOCKED')`, `provider_message_id NULL`, `error TEXT NULL`, `created_at`.
 
-### 2.15 `receipts`
-`id`, `booking_id FK`, `kind ENUM('PAYMENT','FINAL')`, `file_path VARCHAR(512)`, `generated_by FK`, `created_at`.
+### 2.15 `receipts` — ✅ implemented (Phase 4.3, migration `b9c0d1e2f3a4`)
+`id UUID PK`, `booking_id FK → bookings RESTRICT INDEXED`, `receipt_ref VARCHAR(32) UNIQUE INDEXED` (server-generated `RCPT-XXXXXXXX`, UUID-derived), `kind VARCHAR(16)` ∈ `FINAL`, `PAYMENT` (CHECK; Phase 4.3 issues **FINAL** only), `content_hash VARCHAR(64)` (SHA-256 hex of the stored PDF bytes — the fixity proof), `pdf_content BYTEA` (`LargeBinary` — bytes in PostgreSQL, not the filesystem: no storage config, no secret paths, no traversal surface), `generated_by UUID NULL`, `created_at TIMESTAMPTZ`. Partial unique `ux_receipts_final_booking (booking_id) WHERE kind = 'FINAL'` (PG + SQLite) guarantees at most one final receipt per booking.
+
+**Why bytes-in-DB vs `file_path`:** the earlier design sketch assumed a `file_path` column; Phase 4.3 instead stores the PDF bytes directly (deviation documented here). For a six-room property this avoids filesystem configuration, path traversal and permission concerns entirely while remaining reproducible (identical bytes on every download). `kind = 'PAYMENT'` is reserved for a possible per-payment issuance; no such issuance exists yet.
+
+**Checkout columns (Phase 4.3, same migration):** `bookings.checked_out_at TIMESTAMPTZ NULL`, `bookings.checked_out_by UUID NULL`; `status` widens to include `CHECKED_OUT`. Receipt rows and the transition commit atomically — a failed PDF render leaves no receipt row and no status change.
 
 ### 2.16 `public_content`
 `id`, `page VARCHAR(32)` ('home','about','rooms','gallery','facilities','restaurant','attractions','contact'), `title`, `body`, `image_urls JSONB`, `sort_order`, `updated_at`. Seeded empty; content is TBD.

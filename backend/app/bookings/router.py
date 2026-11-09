@@ -19,6 +19,7 @@ from app.bookings.schemas import (
     BookingPatch,
     BookingResponse,
     CheckInRequest,
+    CheckoutResponse,
 )
 from app.bookings.service import (
     BookingOverlapError,
@@ -28,6 +29,7 @@ from app.bookings.service import (
     cancel_booking,
     check_availability,
     check_in_booking,
+    check_out_booking,
     create_booking,
     update_booking,
 )
@@ -79,6 +81,15 @@ def _map_service_error(exc: Exception) -> ApiError:
     if isinstance(exc, ValueError):
         return ApiError(422, "VALIDATION_ERROR", str(exc))
     raise exc
+
+
+BOOKING_ERRORS = (
+    BookingOverlapError,
+    RoomUnavailableError,
+    GuestInactiveError,
+    RateUnavailableError,
+    ValueError,
+)
 
 
 @router.post("", response_model=BookingResponse, status_code=201)
@@ -284,14 +295,48 @@ def check_in_booking_route(
         raise ApiError(404, "NOT_FOUND", "Booking not found.")
     try:
         updated = check_in_booking(db, row, actor_user_id=actor.id)
-    except (
-        BookingOverlapError,
-        RoomUnavailableError,
-        GuestInactiveError,
-        RateUnavailableError,
-        ValueError,
-    ) as exc:
+    except BOOKING_ERRORS as exc:
         raise _map_service_error(exc) from None
     db.commit()
     db.refresh(updated)
     return _serialize(updated)
+
+
+@router.post("/{booking_id}/check-out", response_model=CheckoutResponse)
+def check_out_booking_route(
+    booking_id: uuid.UUID,
+    request: Request = None,  # type: ignore[assignment]
+    db: DBSession = Depends(get_db),
+    actor: User = Depends(require_permission(Permission.BOOKINGS_CHECKOUT)),
+) -> CheckoutResponse:
+    """Settle and check out a CHECKED_IN booking (zero balance only).
+
+    Payments are recorded through the existing payments endpoint
+    (CHECKOUT stage); this endpoint only transitions status, issues
+    the final receipt and writes audits.
+    """
+    verify_csrf(request)  # type: ignore[arg-type]
+    row = db.get(Booking, booking_id)
+    if row is None:
+        raise ApiError(404, "NOT_FOUND", "Booking not found.")
+    from app.billing.service import folio_totals
+
+    try:
+        updated, receipt = check_out_booking(db, row, actor_user_id=actor.id)
+        totals = folio_totals(db, booking_id)
+    except BOOKING_ERRORS as exc:
+        raise _map_service_error(exc) from None
+    db.commit()
+    db.refresh(updated)
+    assert updated.checked_out_at is not None
+    return CheckoutResponse(
+        booking_id=updated.id,
+        booking_ref=updated.booking_ref,
+        status=updated.status,
+        checked_out_at=updated.checked_out_at.isoformat(),
+        total_charges=totals[0],
+        total_paid=totals[1],
+        balance_due=totals[2],
+        receipt_ref=receipt.receipt_ref,
+        content_hash=receipt.content_hash,
+    )

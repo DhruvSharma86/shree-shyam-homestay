@@ -84,6 +84,9 @@ Receptionists can see bookings/guests **needed for operations** (today's arrival
 ### Phase 4.2 payment & check-in enforcement (implemented 2026-11-09)
 `POST /api/v1/bookings/{id}/payments` requires `billing.payments.write` + CSRF (both roles); the overpaying calls are additionally gated: RECEPTIONIST always 422, ADMIN needs a non-empty `overpayment_reason` (audited `OVERPAYMENT_AUTHORIZED`). Payment reversal (`POST .../payments/{payment}/reverse`) requires the same permission **plus an explicit ADMIN role check** (D3 — backend permission + role gate; RECEPTIONIST → 403). `POST /api/v1/bookings/{id}/check-in` requires `bookings.checkin` + CSRF (both roles). `POST /api/v1/bookings/{id}/folio/initialize` requires `billing.charges.write` + CSRF (both roles). All payment mutations audit `PAYMENT_RECORDED` (with `PAYMENT_REVERSED`, `OVERPAYMENT_AUTHORIZED`, `GUEST_CHECKED_IN` for the related flows): ids, modes, stages, amounts, reasons — never guest PII. Default-deny preserved throughout.
 
+### Phase 4.3 checkout & receipt enforcement (implemented 2026-11-09)
+`POST /api/v1/bookings/{id}/check-out` requires `bookings.checkout` + CSRF (both roles). `GET /api/v1/bookings/{id}/receipt` and `GET /api/v1/bookings/{id}/receipt/download` require `billing.receipts.read` (both roles, D6) — staff-only, no public links; downloads audit `RECEIPT_DOWNLOADED`. Checkout audits `CHECKOUT_COMPLETED` and `RECEIPT_ISSUED` in the settlement transaction; metadata carries booking/receipt ids and totals/hash only (no PII). Financial reports remain ADMIN-only (`reports.financial.read`).
+
 ## 6. Examples of enforcement checks
 | Endpoint | Required permission |
 |---|---|

@@ -4,8 +4,9 @@ Date convention: ``check_in_date`` is inclusive, ``check_out_date`` is
 exclusive. A stay 10→12 Nov occupies nights of 10 and 11 Nov; another
 booking starting 12 Nov does not conflict.
 
-Lifecycle (Phase 3.2): CONFIRMED → CANCELLED only. Check-in/out statuses
-belong to a later milestone and are deliberately not defined here.
+Lifecycle (Phase 4.3): CONFIRMED → CHECKED_IN → CHECKED_OUT, and
+CONFIRMED → CANCELLED. CHECKED_OUT is terminal; no write-backs outside
+the billing reversal paths (financial rows stay immutable).
 Double-booking prevention: app check + row lock, plus a PostgreSQL
 exclusion constraint (enforced in migration, not in the ORM metadata, so
 SQLite tests can still run).
@@ -32,10 +33,11 @@ from app.core.db import Base
 
 
 class BookingStatus:
-    """Values for ``bookings.status`` (Phase 4.2 adds check-in)."""
+    """Values for ``bookings.status`` (Phase 4.3 adds checkout)."""
 
     CONFIRMED = "CONFIRMED"
     CHECKED_IN = "CHECKED_IN"
+    CHECKED_OUT = "CHECKED_OUT"
     CANCELLED = "CANCELLED"
 
 
@@ -103,6 +105,8 @@ class Booking(Base):
     cancellation_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     checked_in_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     checked_in_by: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True)
+    checked_out_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    checked_out_by: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True)
 
     def __repr__(self) -> str:
         """Return a debug representation without PII."""

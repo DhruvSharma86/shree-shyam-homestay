@@ -69,6 +69,7 @@ def test_postgres_schema_contains_auth_tables() -> None:
         "bookings",
         "folio_entries",
         "payments",
+        "receipts",
     } <= tables
 
     user_columns = {c["name"] for c in inspector.get_columns("users")}
@@ -104,6 +105,8 @@ def test_postgres_schema_contains_auth_tables() -> None:
         "total_amount",
         "checked_in_at",
         "checked_in_by",
+        "checked_out_at",
+        "checked_out_by",
     } <= booking_columns
     folio_columns = {c["name"] for c in inspector.get_columns("folio_entries")}
     assert {
@@ -130,6 +133,17 @@ def test_postgres_schema_contains_auth_tables() -> None:
         "is_reversal",
         "reverses_payment_id",
     } <= payment_columns
+    receipt_columns = {c["name"] for c in inspector.get_columns("receipts")}
+    assert {
+        "id",
+        "booking_id",
+        "receipt_ref",
+        "kind",
+        "content_hash",
+        "pdf_content",
+        "generated_by",
+        "created_at",
+    } <= receipt_columns
     # Exclusion constraint exists when the DB was created by Alembic
     # (create_all alone does not add it — CI migrates first).
     with get_engine().connect() as conn:
@@ -642,3 +656,112 @@ def test_postgres_payment_and_checkin_concurrency(pg_client) -> None:
     for t in threads:
         t.join(timeout=30)
     assert sorted(results) == ["ok", "overpay"], results
+
+
+def test_postgres_checkout_and_receipt(pg_client) -> None:
+    """Settle, check out, download identical bytes; immutability holds after."""
+    import hashlib
+
+    from tests.factories import csrf_headers
+
+    room_id, _rt, guest_id, _actor, check_in, check_out = _pg_booking_setup(pg_client)
+    headers = csrf_headers(pg_client)
+    booking_id = _pg_create_booking(pg_client, headers, room_id, guest_id, check_in, check_out)
+    assert pg_client.get(f"/api/v1/bookings/{booking_id}/receipt").status_code == 404
+    # Full settlement: 9000 owed; one-night 3000 CHECK_IN + 6000 CHECKOUT.
+    pg_client.post(
+        f"/api/v1/bookings/{booking_id}/payments",
+        json={"amount": "3000.00", "mode": "UPI", "payment_stage": "CHECK_IN"},
+        headers=headers,
+    )
+    blocked = pg_client.post(
+        f"/api/v1/bookings/{booking_id}/check-out", json={}, headers=headers
+    )
+    assert blocked.status_code == 422
+    checked = pg_client.post(
+        f"/api/v1/bookings/{booking_id}/check-in", json={}, headers=headers
+    )
+    assert checked.status_code == 200, checked.text
+    pg_client.post(
+        f"/api/v1/bookings/{booking_id}/payments",
+        json={"amount": "6000.00", "mode": "CARD_POS", "payment_stage": "CHECKOUT"},
+        headers=headers,
+    )
+    out = pg_client.post(
+        f"/api/v1/bookings/{booking_id}/check-out", json={}, headers=headers
+    )
+    assert out.status_code == 200, out.text
+    body = out.json()
+    assert body["status"] == "CHECKED_OUT"
+    assert body["balance_due"] == "0.00"
+    # Receipt metadata + identical PDF bytes across downloads.
+    meta = pg_client.get(f"/api/v1/bookings/{booking_id}/receipt").json()
+    assert meta["receipt_ref"] == body["receipt_ref"]
+    first = pg_client.get(f"/api/v1/bookings/{booking_id}/receipt/download")
+    second = pg_client.get(f"/api/v1/bookings/{booking_id}/receipt/download")
+    assert first.status_code == 200
+    assert first.headers["content-type"] == "application/pdf"
+    assert first.content.startswith(b"%PDF-")
+    assert first.content == second.content
+    assert hashlib.sha256(first.content).hexdigest() == meta["content_hash"]
+    # Post-checkout financial mutations are barred.
+    assert pg_client.post(
+        f"/api/v1/bookings/{booking_id}/payments",
+        json={"amount": "1.00", "mode": "CASH", "payment_stage": "OTHER"},
+        headers=headers,
+    ).status_code == 409
+
+
+def test_postgres_checkout_concurrency(pg_client) -> None:
+    """Two simultaneous checkouts: at most one succeeds (booking-row lock)."""
+    import threading
+    import uuid as _uuid
+
+    from app.bookings.service import check_out_booking
+    from app.core.db import get_session_factory
+    from app.models.booking import Booking
+    from tests.factories import csrf_headers
+
+    room_id, _rt, guest_id, actor_id, check_in, check_out = _pg_booking_setup(pg_client)
+    headers = csrf_headers(pg_client)
+    booking_id = _pg_create_booking(pg_client, headers, room_id, guest_id, check_in, check_out)
+    booking_uuid = _uuid.UUID(booking_id)
+    pg_client.post(
+        f"/api/v1/bookings/{booking_id}/payments",
+        json={"amount": "3000.00", "mode": "UPI", "payment_stage": "CHECK_IN"},
+        headers=headers,
+    )
+    pg_client.post(
+        f"/api/v1/bookings/{booking_id}/payments",
+        json={"amount": "6000.00", "mode": "CASH", "payment_stage": "OTHER"},
+        headers=headers,
+    )
+    checked = pg_client.post(
+        f"/api/v1/bookings/{booking_id}/check-in", json={}, headers=headers
+    )
+    assert checked.status_code == 200, checked.text
+    results: list[str] = []
+    barrier = threading.Barrier(2)
+
+    def attempt() -> None:
+        barrier.wait(timeout=10)
+        db = get_session_factory()()
+        try:
+            check_out_booking(db, db.get(Booking, booking_uuid), actor_user_id=actor_id)
+            db.commit()
+            results.append("ok")
+        except ValueError:
+            db.rollback()
+            results.append("conflict")
+        except Exception:
+            db.rollback()
+            results.append("error")
+        finally:
+            db.close()
+
+    threads = [threading.Thread(target=attempt) for _ in range(2)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout=30)
+    assert sorted(results) == ["conflict", "ok"], results

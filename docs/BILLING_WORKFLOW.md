@@ -1,6 +1,6 @@
 # Billing Workflow — Shree Shyam Home Stay
 
-**Phase 4.2 status (implemented 2026-11-09, backend only):** payment recording is live — `POST /payments` (CASH/UPI/CARD_POS, ADVANCE/CHECK_IN/CHECKOUT/OTHER, optional reference, D9 overpayment gate, booking-row lock), ADMIN-only payment reversals (`POST /payments/{id}/reverse`), one-night check-in enforcement wired via `stage_paid()`. Settlement, PDFs, messages and reports remain deferred (Phase 4.3–4.4). `GET /folio` is now strictly read-only; legacy initial charges backfill through explicit `POST /folio/initialize`.
+**Phase 4.3 status (implemented 2026-11-09, backend only):** checkout settlement with zero-balance enforcement, FINAL receipt issued as immutable PDF bytes in PostgreSQL with a SHA-256 content hash (ReportLab), receipt metadata/download endpoints (both roles, no-store cache), and post-checkout immutability in the service layer. No-show, reports and messaging remain deferred (Phases 4.4–7). `GET /folio` remains strictly read-only; legacy initial charges backfill through explicit `POST /folio/initialize`.
 
 One **folio per booking**. All money movement is append-only; corrections use reversal entries. **No silent deletes or overwrites.**
 
@@ -45,36 +45,33 @@ Balance due = Σ(folio_entries.amount) − Σ(payments.amount)
 - Discounts can never make the folio negative (system blocks entries that would drive the folio total below zero).
 - **Phase 4.2:** refund-linked reversals and ADMIN write-offs (policy TBD).
 
-## 5. Checkout settlement
+## 5. Checkout settlement — ✅ Implemented (Phase 4.3)
 ```
 1. Lock booking (status must be CHECKED_IN)
-2. Compute: total charges = Σ folio entries; total paid = Σ payments
+2. Compute: total charges = Σ folio entries; total paid = net payments (reversals offset)
 3. Outstanding = total charges − total paid
-4. If outstanding > 0 → record final payment(s) until balance = 0
-   (or ADMIN-approved write-off entry — TBD policy)
-5. Generate final PDF receipt (ReportLab)
-6. Status → CHECKED_OUT; checkout_at = now; guest token expiry = checkout_at + 24h
-7. Send checkout WhatsApp + receipt (mock in dev)
-8. Steps 2–6 in ONE transaction; message sending after commit
+4. Balance ≠ 0 → blocked (positive: pay first; negative: credit-refund workflow first — separate approval)
+5. Generate final PDF receipt (ReportLab) in the same transaction
+6. Status → CHECKED_OUT; checked_out_at = now; CHECKOUT_COMPLETED + RECEIPT_ISSUED audits
+7. Steps 1–6 in ONE transaction (receipt bytes + hash committed with the transition)
 ```
+`checkout_at` timestamps, token expiry (+24h), WhatsApp steps remain Phase 5–7 (guest portal/messaging). No write-offs are implemented.
 
 ## 6. Corrections & reversals (no silent edits)
 - **Wrong charge added** → add `REVERSAL` folio entry referencing the original (`reverses_entry_id`), amount = −original. — ✅ Phase 4.1. Already-reversed targets and reversal-of-reversal are rejected (422); the original remains visible on the folio.
-- **Wrong payment recorded** → add reversal payment entry (refund/void), linked to original. — **Phase 4.2 (ADMIN-only per D3).**
+- **Wrong payment recorded** → add reversal payment entry (refund/void), linked to original. — ✅ Phase 4.2 (ADMIN-only per D3).
 - Original entries remain visible on the folio (struck through / marked reversed in UI + PDF).
 - Reversals require ADMIN if the original payment was already reported in a closed financial period (TBD period-close concept).
 
 ## 7. GST / tax behaviour (no assumptions)
-- `tax_settings` controls everything: registration flag, GST number, mode (`NONE`/`EXCLUSIVE`/`INCLUSIVE`), rate.
-- **The system ships with `tax_mode = NONE` and no rates.** Nothing is invented.
-- If EXCLUSIVE: tax added on top of charges. If INCLUSIVE: tax extracted and shown as a memo line (charges unchanged).
-- Receipt shows tax breakdown **only if configured**; otherwise receipts omit tax lines entirely.
-- Rate history is versioned; changing rates never alters past folios.
+- **Tax calculation is not implemented** (D5: configuration remains NONE; no rates, registration or liabilities invented). If `tax_settings` changes are later approved, the calculation policy must be approved first — the receipt then needs a matching update.
+- Receipts still show the **configuration snapshot** (type/rate/mode) whenever the booking snapshot is not NONE, with an explicit note that no tax amount has been charged.
 
-## 8. Receipts (PDF)
-Generated with ReportLab; contents: hotel info (from DB), booking ref, guest name (primary only), room, dates, folio lines (with reversals marked), tax lines (if configured), payments, balance (0.00 at final), generated timestamp, staff user.
-- `PAYMENT` receipt: issued per payment (optional — TBD).
-- `FINAL` receipt: issued at checkout; available to guest via portal link and retained by hotel.
+## 8. Receipts (PDF) — ✅ Implemented (Phase 4.3, ReportLab)
+- Contents: hotel info (from DB, only configured fields), booking ref, guest name (primary only), room, dates, folio lines (with reversals marked), tax **configuration** note (no computed tax), payments, payment reversals (shown as credits, "not new money"), totals, checkout timestamp, receipt ref. Amounts use `INR` grouping with 2dp Decimals straight from the ledger.
+- `FINAL` receipt: issued at checkout; bytes stored in PostgreSQL with a SHA-256 `content_hash` (immutable snapshot — later config edits don't change it). One FINAL per booking (partial unique).
+- `PAYMENT` receipt: reserved kind; not issued.
+- Staff/audited downloads at `GET /receipt` (metadata) and `GET /receipt/download` (PDF, `no-store`); the guest copy arrives later via the portal (Phase 5).
 
 ## 9. Financial reporting (ADMIN only)
 - Daily/monthly revenue, payments by mode, outstanding balances, discount totals, cancellations.

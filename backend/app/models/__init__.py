@@ -9,6 +9,7 @@ from app.models.folio_entry import FolioEntry
 from app.models.guest import Guest
 from app.models.hotel_info import HotelInfo
 from app.models.payment import Payment
+from app.models.receipt import Receipt
 from app.models.restaurant import MenuCategory, MenuItem, RestaurantInfo
 from app.models.room import Room
 from app.models.room_rate import RoomRate
@@ -27,6 +28,7 @@ __all__ = [
     "MenuCategory",
     "MenuItem",
     "Payment",
+    "Receipt",
     "RestaurantInfo",
     "Room",
     "RoomRate",

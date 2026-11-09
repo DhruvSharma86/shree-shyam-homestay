@@ -7,11 +7,12 @@ endpoints arrive in Phase 4.2. See app/billing/service.py for rules.
 
 import uuid
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, Query, Request, Response
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session as DBSession
 
 from app.auth.dependencies import require_permission, verify_csrf
+from app.billing.receipts import get_final_receipt
 from app.billing.schemas import (
     ChargeCreate,
     DiscountCreate,
@@ -21,6 +22,7 @@ from app.billing.schemas import (
     PaymentListResponse,
     PaymentResponse,
     PaymentReversalCreate,
+    ReceiptResponse,
     ReversalCreate,
 )
 from app.billing.service import (
@@ -338,3 +340,67 @@ def post_payment_reversal(
     db.commit()
     db.refresh(reversal)
     return _payment_response(reversal)
+
+
+@router.get("/{booking_id}/receipt", response_model=ReceiptResponse)
+def get_receipt(
+    booking_id: uuid.UUID,
+    db: DBSession = Depends(get_db),
+    actor: User = Depends(require_permission(Permission.BILLING_RECEIPTS_READ)),
+) -> ReceiptResponse:
+    """Return the issued FINAL receipt's metadata (no PDF bytes)."""
+    booking = _booking_row(db, booking_id)
+    receipt = get_final_receipt(db, booking.id)
+    if receipt is None:
+        raise ApiError(404, "NOT_FOUND", "No final receipt issued for this booking.")
+    return ReceiptResponse(
+        receipt_id=receipt.id,
+        booking_id=receipt.booking_id,
+        receipt_ref=receipt.receipt_ref,
+        kind=receipt.kind,
+        content_hash=receipt.content_hash,
+    )
+
+
+@router.get("/{booking_id}/receipt/download")
+def download_receipt(
+    booking_id: uuid.UUID,
+    request: Request,
+    db: DBSession = Depends(get_db),
+    actor: User = Depends(require_permission(Permission.BILLING_RECEIPTS_READ)),
+) -> Response:
+    """Download the issued FINAL receipt PDF (auth, no-store cache).
+
+    The same immutable bytes are served on every download; guests get
+    their copy later through the portal (Phase 5), never here.
+    """
+    booking = _booking_row(db, booking_id)
+    receipt = get_final_receipt(db, booking.id)
+    if receipt is None:
+        raise ApiError(404, "NOT_FOUND", "No final receipt issued for this booking.")
+    from app.auth.service import write_audit
+
+    write_audit(
+        db,
+        action="RECEIPT_DOWNLOADED",
+        resource_type="booking",
+        resource_id=str(booking.id),
+        actor_user_id=actor.id,
+        metadata={
+            "receipt_id": str(receipt.id),
+            "booking_id": str(booking.id),
+            "receipt_ref": receipt.receipt_ref,
+            "content_hash": receipt.content_hash,
+        },
+    )
+    db.commit()
+    filename = f"{receipt.receipt_ref}.pdf"
+    return Response(
+        content=receipt.pdf_content,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Cache-Control": "no-store",
+            "Pragma": "no-cache",
+        },
+    )

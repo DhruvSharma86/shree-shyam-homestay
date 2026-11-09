@@ -78,7 +78,7 @@ Duplicate rule: exact normalized phone + case-insensitive whitespace-collapsed n
 | `/bookings/{id}` | GET, PATCH (dates/room/notes/guests — overlap rechecked) | cancelled bookings: PATCH → 422 |
 | `/bookings/{id}/cancel` | POST | idempotent, never deletes; `{reason}` optional |
 | `/bookings/{id}/check-in` | POST | ✅ Phase 4.2: CONFIRMED → CHECKED_IN (mandatory one-night CHECK_IN payment, `bookings.checkin`) |
-| `/bookings/{id}/checkout` | POST | **Deferred** — Phase 4.3 |
+| `/bookings/{id}/check-out` | POST | ✅ Phase 4.3: CHECKED_IN → CHECKED_OUT (zero balance + FINAL receipt, `bookings.checkout`) |
 | `/bookings/{id}/no-show` | POST | **Deferred** |
 | `/bookings/{id}/guest-link` | GET / POST rotate | **Deferred** — guest portal in Phase 5 |
 
@@ -95,7 +95,9 @@ Create body: `{guest_id, room_id, source: PHONE|WALK_IN (default PHONE), check_i
 | `/bookings/{id}/payments` | POST | `billing.payments.write` (both roles), CSRF: `{amount>0, mode CASH|UPI|CARD_POS, payment_stage ADVANCE|CHECK_IN|CHECKOUT|OTHER, reference_note?, overpayment_reason?}`; overpay blocked unless ADMIN + reason (D9) |
 | `/bookings/{id}/payments/{payment_id}/reverse` | POST | `billing.payments.write` **plus ADMIN role gate** (D3), CSRF; `{reason}` mandatory; dup/cross/self → 422 |
 | `/bookings/{id}/payments` | GET (paginated) | `billing.receipts.read` (both roles) |
-| `/bookings/{id}/receipts` | GET, POST (generate) | **Deferred to Phase 4.3** (ReportLab) |
+| `/bookings/{id}/receipts` | GET, POST (generate) | superseded by the dedicated endpoints below (see §5d) |
+| `/bookings/{id}/receipt` | GET (metadata) | `billing.receipts.read` (both roles): `receipt_ref`, `kind`, `content_hash` |
+| `/bookings/{id}/receipt/download` | GET (PDF) | `billing.receipts.read` (both roles, auth, `no-store` cache): stored FINAL bytes |
 
 Financial writes and their audit rows commit in the same transaction; audit metadata carries entry/payment ids, amounts, modes, stages and reasons only (no guest PII). Balances are always derived with `Decimal` (total_paid is net of reversal records); no stored running total.
 
@@ -158,6 +160,13 @@ Financial writes and their audit rows commit in the same transaction; audit meta
 - **Overpayment (D9):** when `total_paid + new > total_charges`, RECEPTIONIST → 422 always; ADMIN without a non-empty `overpayment_reason` → 422; ADMIN with reason → allowed and `OVERPAYMENT_AUTHORIZED` is audited with the reason.
 - **Reversal (D3):** ADMIN-only (role gate on `billing.payments.write`); original row untouched; new row (`is_reversal`, positive amount, `reverses_payment_id`, reason in `reference_note`); duplicate/cross-booking/self-reversal → 422; net paid total recalculates immediately.
 - **Check-in:** `CONFIRMED → CHECKED_IN` under the same booking lock; cancelled/already-checked-in → 422; timestamp + actor stored (`checked_in_at`, `checked_in_by`); `GUEST_CHECKED_IN` audit (amounts only); requires **net CHECK_IN-stage payments ≥ `night_rate_snapshot`** (D2) — snapshot, not today's rate, never charges/discounts; wrong-stage amounts don't count. `CHECKED_OUT`/settlement remain Phase 4.3.
+
+## 5d. Phase 4.3 checkout & receipt behaviour (implemented)
+- **Checkout:** `POST /bookings/{id}/check-out` (`bookings.checkout`, both roles, CSRF) — `CHECKED_IN` only; cancelled → 422; CONFIRMED → 422; already `CHECKED_OUT` → 422 (duplicate). Transition + `checked_out_at/by` + audits + receipt persistence commit atomically under a booking-row `SELECT … FOR UPDATE` lock (concurrent checkouts: exactly one wins).
+- **Settlement:** balance is re-derived from the ledger (authoritative `folio_totals()` — no recompute, no stored total). Positive balance → 422 listing the amount. Negative balance (credit) → 422 pending the refund/write-off workflow (not implemented).
+- **Immutability after checkout:** every folio/payment mutation checks `CHECKED_OUT` via the folio-closed guard (→ 409) in the service layer; PATCH on a checked-out booking stays blocked with the pre-existing non-CONFIRMED rule (422).
+- **Receipt:** FINAL receipt rendered in-memory by ReportLab (hotel fields only when configured; `INR` grouping, 2dp Decimals, Helvetica embedded font; tax configuration shown as a note when `tid` snapshot ≠ NONE — no liability calculated, D5), PDF bytes stored in PostgreSQL with `content_hash` (partial unique on FINAL per booking). Same bytes on every download; no filesystem paths, no traversal surface, `application/pdf`, `attachment; filename="RCPT-XXXXXXXX.pdf"`, `Cache-Control: no-store`. `GET /receipt` returns metadata; `GET /receipt/download` audits `RECEIPT_DOWNLOADED` first, then serves the stored bytes.
+- **Failure semantics:** a PDF render failure aborts the transaction — no status change, no receipt, no checkout (recoverable by retrying after fixing the cause).
 
 ## 6. Non-goals
 - No GraphQL, no websockets, no webhooks (v1). No public API for third parties.

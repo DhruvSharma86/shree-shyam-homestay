@@ -94,6 +94,8 @@ Modular monolith backend (FastAPI) + separate Next.js frontend, PostgreSQL datab
 
 **Phase 4.2 status (implemented 2026-11-09, backend only):** `GET /folio` made read-only (side effect corrected); explicit `POST /folio/initialize` (auditable backfill, idempotent); payment recording (`POST /payments`, modes + stages + references), D9 overpayment gate (ADMIN + mandatory reason), ADMIN-only payment reversal (D3); `CHECKED_IN` lifecycle with mandatory one-night CHECK_IN payment (D2, stored snapshot). Checkout settlement, PDFs, messages and reports remain deferred (Phases 4.3–4.4).
 
+**Phase 4.3 status (implemented 2026-11-09, backend only):** `CHECKED_OUT` lifecycle with zero-balance settlement (positive/negative balances rejected; ledger-derived balance, no recompute), immutable FINAL receipt (ReportLab PDF bytes stored in PostgreSQL with a SHA-256 content hash — historical reproducibility), `GET /receipt` metadata + `GET /receipt/download` PDF endpoints (authorized, same bytes forever), post-checkout financial immutability in the service layer, and Git artifact hygiene (`*.db` ignores + CI guard). Tax remains default NONE — receipts show the configured tax state without calculating liability. Reports and messaging remain deferred (Phase 4.4–7).
+
 ### 3.5 Billing & payments
 | ID | Requirement |
 |---|---|

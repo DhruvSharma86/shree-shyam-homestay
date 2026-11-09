@@ -17,17 +17,20 @@ import uuid
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session as DBSession
 
 from app.auth.service import write_audit
+from app.billing.receipts import Receipt, create_final_receipt
 from app.billing.service import (
     adjust_initial_charge_for_resnapshot,
     ensure_initial_charge,
+    folio_totals,
     lock_booking,
     stage_paid,
 )
 from app.models.booking import Booking, BookingSource, BookingStatus
+from app.models.folio_entry import FolioEntry
 from app.models.guest import Guest
 from app.models.room import Room, RoomOperationalStatus
 from app.models.room_rate import RoomRate
@@ -355,6 +358,61 @@ def check_in_booking(db: DBSession, booking: Booking, *, actor_user_id: uuid.UUI
         },
     )
     return locked
+
+
+def check_out_booking(
+    db: DBSession, booking: Booking, *, actor_user_id: uuid.UUID
+) -> tuple[Booking, Receipt]:
+    """Settle and check out a CHECKED_IN booking (zero balance only).
+
+    Locks the booking row, requires status CHECKED_IN and an initialized
+    folio, verifies ``balance_due == 0`` from the ledger (no stored
+    running total, no rate recompute), stamps ``checked_out_at``, issues
+    the immutable FINAL receipt, and writes checkout + receipt audits
+    in the caller's transaction. Negative balances (credits) block until
+    the refund/write-off workflow resolves them (separate approval).
+    """
+    locked = lock_booking(db, booking.id)
+    if locked is None:
+        raise ValueError("Booking not found.")
+    if locked.status == BookingStatus.CANCELLED:
+        raise ValueError("A cancelled booking cannot be checked out.")
+    if locked.status == BookingStatus.CHECKED_OUT:
+        raise ValueError("Booking is already checked out.")
+    if locked.status != BookingStatus.CHECKED_IN:
+        raise ValueError("Only CHECKED_IN bookings can be checked out.")
+    entry_count = db.scalar(
+        select(func.count()).select_from(FolioEntry).where(FolioEntry.booking_id == locked.id)
+    )
+    if not entry_count:
+        raise ValueError("Folio is not initialized; cannot check out.")
+    total_charges, total_paid, balance_due = folio_totals(db, locked.id)
+    if balance_due > 0:
+        raise ValueError(f"Outstanding balance {balance_due} must be paid before checkout.")
+    if balance_due < 0:
+        raise ValueError(
+            f"Credit balance {-balance_due} must be resolved "
+            "(refund/write-off workflow) before checkout."
+        )
+    now = datetime.now(UTC)
+    locked.status = BookingStatus.CHECKED_OUT
+    locked.checked_out_at = now
+    locked.checked_out_by = actor_user_id
+    locked.updated_by = actor_user_id
+    write_audit(
+        db,
+        action="CHECKOUT_COMPLETED",
+        resource_type="booking",
+        resource_id=str(locked.id),
+        actor_user_id=actor_user_id,
+        metadata={
+            "booking_id": str(locked.id),
+            "total_charges": str(total_charges),
+            "total_paid": str(total_paid),
+        },
+    )
+    receipt = create_final_receipt(db, locked, actor_user_id=actor_user_id, checked_out_at=now)
+    return locked, receipt
 
 
 def cancel_booking(
