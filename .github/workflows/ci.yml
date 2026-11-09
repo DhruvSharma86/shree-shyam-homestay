@@ -97,7 +97,7 @@ jobs:
               crows = conn.execute(text("SELECT conname FROM pg_constraint WHERE conrelid = 'bookings'::regclass"))
               cnames = {r[0] for r in crows}
               assert "excl_bookings_room_daterange" in cnames, f"missing exclusion constraint: {cnames}"
-              trows = conn.execute(text("SELECT tgname FROM pg_trigger WHERE tgrelid IN ('folio_entries'::regclass, 'payments'::regclass) AND NOT tgisinternal"))
+              trows = conn.execute(text("SELECT tgname FROM pg_trigger WHERE tgrelid IN ('folio_entries'::regclass, 'payments'::regclass, 'receipts'::regclass) AND NOT tgisinternal"))
               tnames = {r[0] for r in trows}
               assert {"trg_folio_entries_immutable", "trg_payments_immutable", "trg_receipts_immutable"} <= tnames, f"missing immutability triggers: {tnames}"
           print("schema OK:", sorted(tables))
