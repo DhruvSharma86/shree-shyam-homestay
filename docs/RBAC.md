@@ -50,6 +50,9 @@ Each endpoint declares the permission it needs; a `require_permission(...)` depe
 ### Phase 2.1 enforcement (implemented 2026-11-05)
 All `/api/v1/admin/{hotel,room-types,rooms,room-rates,tax-settings,restaurant,menu-categories,menu-items,cab-providers}` endpoints require the mapped permission above (ADMIN only). RECEPTIONIST receives 403; unauthenticated receives 401. Public/guest-portal reads are deferred (Phases 5–6). Every mutation writes an audit record (`HOTEL_INFO_UPDATED`, `ROOM_TYPE_CREATED/UPDATED`, `ROOM_CREATED/UPDATED`, `RATE_CREATED`, `TAX_SETTINGS_CREATED`, `RESTAURANT_INFO_UPDATED`, `MENU_CATEGORY_CREATED/UPDATED`, `MENU_ITEM_CREATED/UPDATED`, `CAB_PROVIDER_CREATED/UPDATED`).
 
+### Phase 5.2 content enforcement (implemented 2026-11-09)
+`/api/v1/admin/{tour-packages,local-info}` GET/POST/PATCH require `content.manage` (**ADMIN-only**); RECEPTIONIST → 403, unauthenticated → 401, missing CSRF → 403. Audits `TOUR_PACKAGE_CREATED/UPDATED`, `LOCAL_INFO_CREATED/UPDATED` carry names/titles only (no guest PII). The guest tourism endpoint requires no permission (bearer-link-only; active rows only).
+
 ## 3. Receptionist operational subset
 Receptionists can see bookings/guests **needed for operations** (today's arrivals, current stays, booking search by name/phone/ref). They see folio & payment details **for the booking they are handling** (required to record payments and print receipts) but **cannot** access aggregate financial reports, revenue summaries, or audit logs.
 

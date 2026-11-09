@@ -165,6 +165,9 @@ Positive = charge; negative = discount/reversal (keeps balance math simple: bala
 
 **Immutability:** migration `c0d1e2f3a4b5` (Phase 4.4 preflight) installs `trg_receipts_immutable` (BEFORE UPDATE/DELETE) reusing `reject_financial_mutation()`. Issued receipts (bytes + hash) cannot be silently rewritten or removed. Downgrade drops the trigger only; SQLite has no trigger equivalent (service-layer only there, explicitly asserted in `test_sqlite_has_no_immutability_trigger`).
 
+### 2.18 `tour_packages` / `local_info` — ✅ implemented (Phase 5.2, migration `e2f3a4b5c6d7`)
+Admin-managed portal content (no booking/payment integration). `tour_packages`: `id UUID PK`, `name VARCHAR(160) INDEXED`, `description TEXT NULL`, `duration VARCHAR(64) NULL` (free-text), `price NUMERIC(12,2) NULL` (optional, never computed), `image_url VARCHAR(1024) NULL`, `contact_number VARCHAR(24) NULL`, `is_active BOOL DEFAULT TRUE`, `display_order INT DEFAULT 0`, `created_at/updated_at TIMESTAMPTZ`. `local_info`: same minus duration/price plus `location VARCHAR(255) NULL`. Guest reads return only `is_active` rows (display order) with no internal ids; staff writes are `content.manage` (ADMIN-only) + CSRF + audit.
+
 **Checkout columns (Phase 4.3, same migration):** `bookings.checked_out_at TIMESTAMPTZ NULL`, `bookings.checked_out_by UUID NULL`; `status` widens to include `CHECKED_OUT`. Receipt rows and the transition commit atomically — a failed PDF render leaves no receipt row and no status change.
 
 ### 2.17 `guest_portal_tokens` — ✅ implemented (Phase 5.1, migration `d1e2f3a4b5c6`)

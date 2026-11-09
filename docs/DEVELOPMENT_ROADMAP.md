@@ -1,7 +1,7 @@
 # Development Roadmap — Shree Shyam Home Stay
 
-> **Current status: Phase 5.1 (Guest portal foundation, backend) — ✅ complete.**
-> Phases 1–4 are closed and PostgreSQL-verified. Phase 5.1 delivered hashed bearer tokens issued at check-in, lifecycle-derived 24h expiry, ADMIN revoke/rotate, and read-only guest APIs (overview/menu/cab/wifi + FINAL receipt) — backend tests green; PostgreSQL verified via GitHub Actions (see CI). No public site, WhatsApp, online booking/payments or frontend in this milestone. Tax remains default NONE (no GST invented). Tour/tourist content remains a documented gap (no content model exists).
+> **Current status: Phase 5.2 (Guest portal frontend & tourism content) — ✅ complete.**
+> Phases 1–4 are closed and PostgreSQL-verified. Phase 5.1 delivered hashed bearer tokens; Phase 5.2 adds the mobile-first guest website (`/guest/[token]`), admin tourism content (`tour_packages`/`local_info`), and staff check-in link delivery (`/admin/bookings`) — backend tests green; frontend tests/build/lint/typecheck clean; PostgreSQL verified via GitHub Actions (see CI). No public marketing site, WhatsApp, online booking/payments or analytics in this milestone. Tax remains default NONE (no GST invented).
 
 ## Phase 0 — Documentation & design ✅ (this milestone)
 - [x] README, SRS, Architecture, Database, RBAC, Booking/Billing workflows, Guest portal, API design, Roadmap
@@ -107,10 +107,21 @@
 - Tax computation from settings; ReportLab PDF receipts (payment + final)
 - **Exit criteria:** end-to-end checkout settlement with reconcile tests; financial immutability tests pass.
 
-## Phase 5 — Guest portal
-- Token generation/hashing, `/guest/{token}` views, 24h post-checkout expiry, receipt download
-- Rate limiting, no-store cache headers, expiry UX
-- **Exit criteria:** security checklist (no PII leakage, token can't be guessed/reconstructed) reviewed.
+## Phase 5 — Guest portal (5.1 foundation ✅, 5.2 frontend + content ✅)
+#### Phase 5.1 — Guest portal foundation ✅ (complete, 2026-11-09)
+- [x] Secure bearer tokens (256-bit, SHA-256 hash-only, one active per booking), issued transactionally at check-in, raw shown exactly once, ADMIN revoke/rotate/status
+- [x] Lifecycle-derived expiry (open pre-checkout, expires exactly 24h after checkout; cancelled/revoked dead), generic 404 (no validity oracle), brute-force limiter
+- [x] Read-only portal APIs (`overview/menu/cab/wifi/receipt`) under `/api/v1/guest-portal/{token}/...`, no-store cache, guest-safe fields, FINAL receipt served from stored bytes
+- [x] 219 tests passing, 16 skipped locally (PG portal tests enforced in CI); Alembic upgrade/downgrade clean; CI green
+- Next: Phase 5.2 (portal frontend + tourism content) — do not start automatically.
+
+#### Phase 5.2 — Guest portal frontend & tourism content ✅ (complete, 2026-11-09)
+- [x] Mobile-first guest website (`/guest/[token]`, server/params wrapper + client list) with overview, menu (photos optional), cab call actions (`tel:`), Wi-Fi (copy action), tourism (active rows only), receipt download; no token storage, no staff session, loading/empty/error states
+- [x] `tour_packages` + `local_info` admin content ( migration `e2f3a4b5c6d7`), ADMIN CRUD (`content.manage`, CSRF, audit) + guest `/tourism` endpoint (active only, no ids)
+- [x] Staff bookings page (`/admin/bookings`): one-night payment + check-in delivery with one-time portal link (copy/dismiss, never persisted; rotation ADMIN-only)
+- [x] **16 frontend tests pass**; `next build` clean (partial prerendered guest page, no static guest data); backend 228 passed locally with 16 new PG skips (enforced in CI)
+- **Exit criteria met:** guest sees configured stay/menu/cab/tourism/wifi/receipt content with bearer-link security; ADMIN manages tourism content without code changes/DB edits.
+- Next: Phase 5.3 (public marketing site or portal polish) — do not start automatically.
 
 ## Phase 6 — Reports, audit viewer, public website
 - Admin financial/occupancy reports; audit-log viewer

@@ -24,3 +24,4 @@ export interface MenuCategory { id: string; name: string; description: string | 
 export interface MenuItem { id: string; name: string; description: string | null; price: string; image_url: string | null; category_id: string; is_vegetarian: boolean; is_available: boolean; display_order: number; }
 export interface CabProvider { id: string; company_name: string; description: string | null; contact_number: string; website_url: string | null; service_description: string | null; is_active: boolean; display_order: number; }
 export interface ApiError { error: { code: string; message: string; details?: unknown } }
+export * from './guestPortal';

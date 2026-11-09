@@ -17,6 +17,7 @@ from app.models.room_rate import RoomRate
 from app.models.room_type import RoomType
 from app.models.session import Session
 from app.models.tax_settings import TaxSettings
+from app.models.tourism import LocalInfo, TourPackage
 from app.models.user import User
 
 __all__ = [
@@ -27,6 +28,7 @@ __all__ = [
     "Guest",
     "GuestPortalToken",
     "HotelInfo",
+    "LocalInfo",
     "MenuCategory",
     "MenuItem",
     "Payment",
@@ -37,5 +39,6 @@ __all__ = [
     "RoomType",
     "Session",
     "TaxSettings",
+    "TourPackage",
     "User",
 ]

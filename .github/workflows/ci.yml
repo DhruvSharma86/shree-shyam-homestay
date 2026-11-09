@@ -71,7 +71,7 @@ jobs:
 
           inspector = inspect(get_engine())
           tables = set(inspector.get_table_names())
-          missing = {"users", "sessions", "audit_log", "guests", "bookings", "folio_entries", "payments", "receipts", "guest_portal_tokens", "alembic_version"} - tables
+          missing = {"users", "sessions", "audit_log", "guests", "bookings", "folio_entries", "payments", "receipts", "guest_portal_tokens", "tour_packages", "local_info", "alembic_version"} - tables
           assert not missing, f"missing tables: {missing}"
           cols = {c["name"] for c in inspector.get_columns("users")}
           needed = {"id", "username", "password_hash", "role", "is_active", "created_at", "updated_at"}
@@ -92,6 +92,12 @@ jobs:
           rcols = {c["name"] for c in inspector.get_columns("receipts")}
           rneeded = {"id", "booking_id", "receipt_ref", "kind", "content_hash", "pdf_content", "generated_by", "created_at"}
           assert rneeded <= rcols, f"receipts table incomplete: {rneeded - rcols}"
+          tpcols = {c["name"] for c in inspector.get_columns("tour_packages")}
+          tpneeded = {"id", "name", "description", "duration", "price", "image_url", "contact_number", "is_active", "display_order", "created_at", "updated_at"}
+          assert tpneeded <= tpcols, f"tour_packages table incomplete: {tpneeded - tpcols}"
+          lpcols = {c["name"] for c in inspector.get_columns("local_info")}
+          lpneeded = {"id", "title", "description", "location", "contact_number", "image_url", "is_active", "display_order", "created_at", "updated_at"}
+          assert lpneeded <= lpcols, f"local_info table incomplete: {lpneeded - lpcols}"
           tcols = {c["name"] for c in inspector.get_columns("guest_portal_tokens")}
           tneeded = {"id", "booking_id", "token_hash", "created_at", "revoked_at", "last_accessed_at"}
           assert tneeded <= tcols, f"guest_portal_tokens table incomplete: {tneeded - tcols}"

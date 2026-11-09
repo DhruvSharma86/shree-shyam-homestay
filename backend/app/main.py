@@ -24,6 +24,7 @@ from app.guest_portal.router import router as guest_portal_router
 from app.guests.router import router as guests_router
 from app.hotel.restaurant_router import router as restaurant_router
 from app.hotel.router import router as hotel_router
+from app.hotel.tourism_router import router as tourism_router
 from app.reports.router import router as reports_router
 
 
@@ -59,6 +60,7 @@ def create_app() -> FastAPI:
     app.include_router(users_router, prefix=settings.api_v1_prefix)
     app.include_router(hotel_router, prefix=settings.api_v1_prefix)
     app.include_router(restaurant_router, prefix=settings.api_v1_prefix)
+    app.include_router(tourism_router, prefix=settings.api_v1_prefix)
     app.include_router(guests_router, prefix=settings.api_v1_prefix)
     app.include_router(bookings_router, prefix=settings.api_v1_prefix)
     app.include_router(billing_router, prefix=settings.api_v1_prefix)

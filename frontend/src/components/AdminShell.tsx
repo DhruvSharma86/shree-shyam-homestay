@@ -6,6 +6,7 @@ import { logout } from '@/services/auth';
 
 const NAV = [
   ['Dashboard', '/admin/dashboard'],
+  ['Bookings', '/admin/bookings'],
   ['Hotel', '/admin/hotel'],
   ['Room types', '/admin/room-types'],
   ['Rooms', '/admin/rooms'],
@@ -14,6 +15,7 @@ const NAV = [
   ['Restaurant', '/admin/restaurant'],
   ['Menu', '/admin/menu'],
   ['Cab providers', '/admin/cab-providers'],
+  ['Tourism', '/admin/tourism'],
   ['Users', '/admin/users'],
   ['Audit logs', '/admin/audit-logs'],
 ] as const;

@@ -94,5 +94,22 @@ export const userCreateSchema = z.object({
   role: z.enum(['ADMIN', 'RECEPTIONIST']),
   email: z.string().email().optional().or(z.literal('')),
 });
+export const tourPackageSchema = z.object({
+  name: z.string().min(1, 'Name is required').max(160),
+  description: z.string().optional(),
+  duration: z.string().max(64).optional(),
+  price: z.string().regex(/^\d+(\.\d{1,2})?$/, 'Enter a non-negative price').optional().or(z.literal('')),
+  image_url: z.string().url('Must be a URL').optional().or(z.literal('')),
+  contact_number: z.union([z.string().min(7, 'Phone too short').max(24), z.literal('')]).optional(),
+  display_order: z.coerce.number().int(),
+});
+export const localInfoSchema = z.object({
+  title: z.string().min(1, 'Title is required').max(160),
+  description: z.string().optional(),
+  location: z.string().max(255).optional(),
+  contact_number: z.union([z.string().min(7, 'Phone too short').max(24), z.literal('')]).optional(),
+  image_url: z.string().url('Must be a URL').optional().or(z.literal('')),
+  display_order: z.coerce.number().int(),
+});
 export type LoginForm = z.infer<typeof loginSchema>;
 export type HotelForm = z.infer<typeof hotelSchema>;

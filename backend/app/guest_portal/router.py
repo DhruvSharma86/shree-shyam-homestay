@@ -21,6 +21,7 @@ from app.guest_portal import service as portal
 from app.guest_portal.schemas import (
     PortalCabItem,
     PortalCabResponse,
+    PortalLocalInfo,
     PortalMenuCategory,
     PortalMenuItem,
     PortalMenuResponse,
@@ -28,6 +29,8 @@ from app.guest_portal.schemas import (
     PortalReceiptResponse,
     PortalTokenAdminResponse,
     PortalTokenIssuedResponse,
+    PortalTourismResponse,
+    PortalTourPackage,
     PortalWifiResponse,
 )
 from app.models.booking import Booking
@@ -137,6 +140,23 @@ def portal_wifi(
     _resolve(db, token)
     db.commit()
     return _portal_json(portal.portal_wifi(db))
+
+
+@router.get("/{token}/tourism", response_model=PortalTourismResponse)
+def portal_tourism(
+    token: str,
+    db: DBSession = Depends(get_db),
+) -> JSONResponse:
+    """Active tour packages and local information (empty when unconfigured)."""
+    _resolve(db, token)
+    db.commit()
+    data = portal.portal_tourism(db)
+    return _portal_json(
+        PortalTourismResponse(
+            packages=[PortalTourPackage(**p) for p in data["packages"]],
+            local_info=[PortalLocalInfo(**i) for i in data["local_info"]],
+        )
+    )
 
 
 @router.get("/{token}/receipt", response_model=PortalReceiptResponse)

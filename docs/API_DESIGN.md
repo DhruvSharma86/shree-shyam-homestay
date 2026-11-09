@@ -130,6 +130,7 @@ Financial writes and their audit rows commit in the same transaction; audit meta
 | `/guest-portal/{token}/menu` | GET | active categories + visible items |
 | `/guest-portal/{token}/cab` | GET | active cab providers |
 | `/guest-portal/{token}/wifi` | GET | SSID/password only when configured |
+| `/guest-portal/{token}/tourism` | GET | active tour packages + local information |
 | `/guest-portal/{token}/receipt` | GET | final receipt metadata (404 until issued) |
 | `/guest-portal/{token}/receipt/download` | GET | stored FINAL PDF bytes for this booking only |
 | `/bookings/{id}/guest-portal` | GET | staff status (ADMIN `portal.tokens.manage`) — never raw |

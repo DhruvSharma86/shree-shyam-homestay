@@ -146,6 +146,33 @@ def test_postgres_schema_contains_auth_tables() -> None:
         "generated_by",
         "created_at",
     } <= receipt_columns
+    tour_columns = {c["name"] for c in inspector.get_columns("tour_packages")}
+    assert {
+        "id",
+        "name",
+        "description",
+        "duration",
+        "price",
+        "image_url",
+        "contact_number",
+        "is_active",
+        "display_order",
+        "created_at",
+        "updated_at",
+    } <= tour_columns
+    local_columns = {c["name"] for c in inspector.get_columns("local_info")}
+    assert {
+        "id",
+        "title",
+        "description",
+        "location",
+        "contact_number",
+        "image_url",
+        "is_active",
+        "display_order",
+        "created_at",
+        "updated_at",
+    } <= local_columns
     # Exclusion constraint exists when the DB was created by Alembic
     # (create_all alone does not add it — CI migrates first).
     with get_engine().connect() as conn:
@@ -978,3 +1005,41 @@ def test_postgres_checkout_concurrency(pg_client) -> None:
     for t in threads:
         t.join(timeout=30)
     assert sorted(results) == ["conflict", "ok"], results
+
+
+def test_postgres_tourism_roundtrip(pg_client) -> None:
+    """Tourism CRUD, activation and guest filtering on PostgreSQL."""
+    from tests.factories import csrf_headers
+
+    room_id, _rt, guest_id, _actor, check_in, check_out = _pg_booking_setup(pg_client)
+    headers = csrf_headers(pg_client)
+    pkg = pg_client.post(
+        "/api/v1/admin/tour-packages",
+        json={"name": "PG Tour", "duration": "2 hours"},
+        headers=headers,
+    )
+    assert pkg.status_code == 201, pkg.text
+    hidden = pg_client.post(
+        "/api/v1/admin/tour-packages",
+        json={"name": "PG Hidden Tour"},
+        headers=headers,
+    ).json()
+    pg_client.patch(
+        f"/api/v1/admin/tour-packages/{hidden['id']}",
+        json={"is_active": False},
+        headers=headers,
+    )
+    booking_id = _pg_create_booking(pg_client, headers, room_id, guest_id, check_in, check_out)
+    pg_client.post(
+        f"/api/v1/bookings/{booking_id}/payments",
+        json={"amount": "3000.00", "mode": "UPI", "payment_stage": "CHECK_IN"},
+        headers=headers,
+    )
+    checked = pg_client.post(
+        f"/api/v1/bookings/{booking_id}/check-in", json={}, headers=headers
+    )
+    raw = checked.json()["portal_access_token"]
+    body = pg_client.get(f"/api/v1/guest-portal/{raw}/tourism").json()
+    names = [p["name"] for p in body["packages"]]
+    assert "PG Tour" in names
+    assert "PG Hidden Tour" not in names

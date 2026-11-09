@@ -82,6 +82,34 @@ class PortalReceiptResponse(BaseModel):
     content_hash: str
 
 
+class PortalTourPackage(BaseModel):
+    """One guest-visible tour package (no internal ids)."""
+
+    name: str
+    description: str | None = None
+    duration: str | None = None
+    price: Decimal | None = None
+    image_url: str | None = None
+    contact_number: str | None = None
+
+
+class PortalLocalInfo(BaseModel):
+    """One guest-visible local information entry (no internal ids)."""
+
+    title: str
+    description: str | None = None
+    location: str | None = None
+    contact_number: str | None = None
+    image_url: str | None = None
+
+
+class PortalTourismResponse(BaseModel):
+    """Tourism content for the guest (empty when unconfigured)."""
+
+    packages: list[PortalTourPackage]
+    local_info: list[PortalLocalInfo]
+
+
 class PortalTokenAdminResponse(BaseModel):
     """Portal token status for staff (never the raw token)."""
 

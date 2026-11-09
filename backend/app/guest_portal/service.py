@@ -31,6 +31,7 @@ from app.models.receipt import Receipt, ReceiptKind
 from app.models.restaurant import MenuCategory, MenuItem
 from app.models.room import Room
 from app.models.room_type import RoomType
+from app.models.tourism import LocalInfo, TourPackage
 
 PORTAL_WINDOW = timedelta(hours=24)
 
@@ -307,3 +308,40 @@ def portal_final_receipt(db: DBSession, booking_id: uuid.UUID) -> Receipt | None
     return db.scalar(
         select(Receipt).where(Receipt.booking_id == booking_id, Receipt.kind == ReceiptKind.FINAL)
     )
+
+
+def portal_tourism(db: DBSession) -> dict:
+    """Active guest-visible tour packages and local information."""
+    packages = db.scalars(
+        select(TourPackage)
+        .where(TourPackage.is_active.is_(True))
+        .order_by(TourPackage.display_order.asc(), TourPackage.name.asc())
+    ).all()
+    infos = db.scalars(
+        select(LocalInfo)
+        .where(LocalInfo.is_active.is_(True))
+        .order_by(LocalInfo.display_order.asc(), LocalInfo.title.asc())
+    ).all()
+    return {
+        "packages": [
+            {
+                "name": row.name,
+                "description": row.description,
+                "duration": row.duration,
+                "price": row.price,
+                "image_url": row.image_url,
+                "contact_number": row.contact_number,
+            }
+            for row in packages
+        ],
+        "local_info": [
+            {
+                "title": row.title,
+                "description": row.description,
+                "location": row.location,
+                "contact_number": row.contact_number,
+                "image_url": row.image_url,
+            }
+            for row in infos
+        ],
+    }

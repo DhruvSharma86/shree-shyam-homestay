@@ -282,3 +282,78 @@ class CabInfoPatch(BaseModel):
     service_description: str | None = None
     is_active: bool | None = None
     display_order: int | None = None
+
+
+class TourPackageResponse(BaseModel):
+    """Tour package response (content only — never bookable)."""
+
+    id: uuid.UUID
+    name: str
+    description: str | None = None
+    duration: str | None = None
+    price: Decimal | None = None
+    image_url: str | None = None
+    contact_number: str | None = None
+    is_active: bool
+    display_order: int
+
+
+class TourPackageCreate(BaseModel):
+    """Create a tour package (content only)."""
+
+    name: str = Field(min_length=1, max_length=160)
+    description: str | None = None
+    duration: str | None = None
+    price: Decimal | None = Field(default=None, ge=Decimal("0"))
+    image_url: HttpUrl | None = None
+    contact_number: str | None = Field(default=None, min_length=7, max_length=24)
+    display_order: int = 0
+
+
+class TourPackagePatch(BaseModel):
+    """Partial tour package update (incl. activation)."""
+
+    name: str | None = Field(default=None, min_length=1, max_length=160)
+    description: str | None = None
+    duration: str | None = None
+    price: Decimal | None = Field(default=None, ge=Decimal("0"))
+    image_url: str | None = None
+    contact_number: str | None = Field(default=None, min_length=7, max_length=24)
+    is_active: bool | None = None
+    display_order: int | None = None
+
+
+class LocalInfoResponse(BaseModel):
+    """Local information entry response."""
+
+    id: uuid.UUID
+    title: str
+    description: str | None = None
+    location: str | None = None
+    contact_number: str | None = None
+    image_url: str | None = None
+    is_active: bool
+    display_order: int
+
+
+class LocalInfoCreate(BaseModel):
+    """Create a local information entry."""
+
+    title: str = Field(min_length=1, max_length=160)
+    description: str | None = None
+    location: str | None = None
+    contact_number: str | None = Field(default=None, min_length=7, max_length=24)
+    image_url: HttpUrl | None = None
+    display_order: int = 0
+
+
+class LocalInfoPatch(BaseModel):
+    """Partial local information update (incl. activation)."""
+
+    title: str | None = Field(default=None, min_length=1, max_length=160)
+    description: str | None = None
+    location: str | None = None
+    contact_number: str | None = Field(default=None, min_length=7, max_length=24)
+    image_url: str | None = None
+    is_active: bool | None = None
+    display_order: int | None = None
