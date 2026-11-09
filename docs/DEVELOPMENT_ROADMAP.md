@@ -130,6 +130,14 @@
 - **Exit criteria met:** RECEPTIONIST operational booking workflow reachable via UI; ADMIN permissions unchanged; backend RBAC authoritative.
 - Next: continue Phase 5.3 (journey/security/mobile hardening) — do not start automatically.
 
+#### Phase 5.3 Priority 2 — End-to-end guest journey audit ✅ (complete, 2026-11-09)
+- [x] Journey audited end to end (guest record → booking → payments → check-in (+portal issuance) → portal content → checkout → immutable receipt → 24h expiry), covering all 19 steps (APIs, permissions, DB effects, audits, failure behavior)
+- [x] Edge matrix tested: duplicate/concurrent check-in, cancelled bookings, insufficient/excess payments, repeated/admin-cancelled/revoked/rotated tokens, checkout guards (open/duplicate/credit), receipt 404→bytes→hash, expiry boundary at 24h, PG transaction consistency
+- [x] Lost-response recovery: transactional commit holds (status + token); repeated check-in → `422`; raw token unrecoverable by design; ADMIN rotation is the documented recovery (receptionists see guidance, not controls); receipts hash-verified at every stage
+- [x] Role matrix re-verified (ADMIN full; RECEPTIONIST permitted-subset; RECEPTIONIST blocked from rotation/revocation/tourism at both UI visibility and backend RBAC)
+- [x] Frontend tests: 26 tests (receptionist recovery guidance + per-role flows); backend: 219 passed locally, full CI green
+- Next: continue Phase 5.3 (security/mobile/error hardening) — do not start automatically.
+
 ## Phase 6 — Reports, audit viewer, public website
 - Admin financial/occupancy reports; audit-log viewer
 - Public marketing site (Home/About/Rooms/Gallery/Facilities/Restaurant/Attractions/Contact, Maps embed, tel: links) — **no booking functionality**

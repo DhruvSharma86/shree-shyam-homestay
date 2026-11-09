@@ -132,6 +132,19 @@ describe('bookings page roles', () => {
     expect(screen.queryByText('Users')).not.toBeInTheDocument();
   });
 
+  it('receptionist sees recovery guidance after check-in', async () => {
+    setRole('rec1', 'RECEPTIONIST', ['bookings.read', 'bookings.checkin', 'billing.payments.write']);
+    mocks.list.mockResolvedValue(LIST);
+    mocks.get.mockResolvedValue({ ...DETAIL, status: 'CHECKED_IN' });
+    mocks.recordPayment.mockResolvedValue({});
+    mocks.checkIn.mockResolvedValue({ booking_id: 'b1', booking_ref: 'SSH-AAA', status: 'CHECKED_IN', checked_in_at: 'now', portal_access_token: 'SECRET-REC' });
+    wrap();
+    await waitFor(() => expect(screen.getByText('SSH-AAA')).toBeInTheDocument());
+    screen.getByText('Open').click();
+    await waitFor(() => expect(screen.getByText(/cannot be retrieved again/)).toBeInTheDocument());
+    expect(screen.queryByText('Rotate link (ADMIN)')).not.toBeInTheDocument();
+  });
+
   it('admin shell shows full navigation', () => {
     setRole('admin1', 'ADMIN', ['users.manage']);
     render(

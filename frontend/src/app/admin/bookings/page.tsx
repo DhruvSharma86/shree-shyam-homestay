@@ -130,6 +130,12 @@ export default function BookingsPage() {
                   </p>
                 </div>
               ) : null}
+              {!canAdminPortal && detail.data.status === 'CHECKED_IN' ? (
+                <p className="mt-2 text-xs text-stone-500">
+                  The guest link is shown only once at check-in and cannot be retrieved again.
+                  If the guest cannot find it, ask an ADMIN to rotate the link (rotation revokes the previous one).
+                </p>
+              ) : null}
               {canAdminPortal && detail.data.status === 'CHECKED_IN' ? (
                 <div className="flex flex-wrap gap-2">
                   <Button type="button" onClick={() => rotate.mutate()} disabled={rotate.isPending}>Rotate link (ADMIN)</Button>
