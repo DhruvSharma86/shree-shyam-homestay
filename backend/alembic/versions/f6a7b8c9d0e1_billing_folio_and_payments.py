@@ -68,27 +68,6 @@ def upgrade() -> None:
         postgresql_where=sa.text("is_initial = TRUE"),
         sqlite_where=sa.text("is_initial = 1"),
     )
-    # PostgreSQL immutability: financial rows reject UPDATE/DELETE; only
-    # INSERT (new entries and corrections via reversals) is allowed.
-    # SQLite has no trigger equivalent and relies on the service layer
-    # (documented in docs/DATABASE_DESIGN.md) — assertions in PG tests
-    # pin this behaviour.
-    if op.get_bind().dialect.name == "postgresql":
-        op.execute(
-            "CREATE OR REPLACE FUNCTION reject_financial_mutation() "
-            "RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN "
-            "RAISE EXCEPTION 'financial records are append-only; use a reversal entry'; "
-            "RETURN NULL; END; $$"
-        )
-        for table, trigger in (
-            ("folio_entries", "trg_folio_entries_immutable"),
-            ("payments", "trg_payments_immutable"),
-        ):
-            op.execute(f"DROP TRIGGER IF EXISTS {trigger} ON {table}")
-            op.execute(
-                f"CREATE TRIGGER {trigger} BEFORE UPDATE OR DELETE ON {table} "
-                "FOR EACH ROW EXECUTE FUNCTION reject_financial_mutation()"
-            )
     op.create_table(
         "payments",
         sa.Column("id", sa.Uuid(), nullable=False),
@@ -121,6 +100,28 @@ def upgrade() -> None:
     op.create_index(
         op.f("ix_payments_reverses_payment_id"), "payments", ["reverses_payment_id"], unique=False
     )
+    # PostgreSQL immutability: financial rows reject UPDATE/DELETE; only
+    # INSERT (new entries and corrections via reversals) is allowed.
+    # SQLite has no trigger equivalent and relies on the service layer
+    # (documented in docs/DATABASE_DESIGN.md) — assertions in PG tests
+    # pin this behaviour. NOTE: this block must run AFTER both financial
+    # tables exist (the payments trigger would fail otherwise).
+    if op.get_bind().dialect.name == "postgresql":
+        op.execute(
+            "CREATE OR REPLACE FUNCTION reject_financial_mutation() "
+            "RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN "
+            "RAISE EXCEPTION 'financial records are append-only; use a reversal entry'; "
+            "RETURN NULL; END; $$"
+        )
+        for table, trigger in (
+            ("folio_entries", "trg_folio_entries_immutable"),
+            ("payments", "trg_payments_immutable"),
+        ):
+            op.execute(f"DROP TRIGGER IF EXISTS {trigger} ON {table}")
+            op.execute(
+                f"CREATE TRIGGER {trigger} BEFORE UPDATE OR DELETE ON {table} "
+                "FOR EACH ROW EXECUTE FUNCTION reject_financial_mutation()"
+            )
     # ### end Alembic commands ###
 
 
