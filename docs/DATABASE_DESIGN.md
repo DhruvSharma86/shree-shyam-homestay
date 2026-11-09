@@ -77,30 +77,44 @@ Singleton row (`singleton_key = 1` UNIQUE). Fields: `id UUID PK`, `singleton_key
 
 ### 2.9 `guests` — ✅ implemented (Phase 3.1, migration `d4e5f6a7b8c9`)
 `id UUID PK`, `full_name VARCHAR(160) INDEXED` (stored whitespace-collapsed), `phone VARCHAR(24) INDEXED` (stored **E.164 normalized**), `email VARCHAR(255) NULL INDEXED`, `address TEXT NULL`, `notes TEXT NULL`, `is_active BOOL DEFAULT TRUE INDEXED`, `created_at/updated_at TIMESTAMPTZ`, `created_by/updated_by UUID NULL`.
-Duplicate rule: one **active** guest per `(phone, lower(trim(full_name)))` — enforced by service check + partial unique expression index `ix_guests_phone_name_active (phone, lower(trim(full_name))) WHERE is_active` (PostgreSQL `is_active = TRUE`, SQLite `is_active = 1`). Same phone + different name allowed; exact match → `409` with `existing_guest_id`. Deactivated guests never block re-registration. Soft-deactivation only; never hard-deleted.
+Duplicate rule: one **active** guest per `(phone, lower(full_name))` — stored names are whitespace-collapsed by the service on write, so the index matches the application rule. Enforced by service check + partial unique expression index `ix_guests_phone_name_active (phone, lower(full_name)) WHERE is_active` (PostgreSQL `is_active = TRUE`, SQLite `is_active = 1`). Same phone + different name allowed; exact match → `409` with `existing_guest_id`. Deactivated guests never block re-registration. Soft-deactivation only; never hard-deleted.
 **Aadhaar deferred (not in Phase 3.1):** no image, number, or `id_proof_type/number` columns exist. Full ID-proof handling requires legal review, private encrypted storage, access control and retention rules — a separate approved milestone. `id_proof_type/number` are therefore **not** collected. See SRS §3.3 note.
 
-### 2.10 `bookings` (core)
+### 2.10 `bookings` (core) — ✅ implemented (Phase 3.2, migration `e5f6a7b8c9d0`)
 | Field | Type | Notes |
 |---|---|---|
 | id | UUID PK | |
-| booking_ref | VARCHAR(16) UNIQUE | human ref, e.g. `SSH-000123` |
-| guest_id | FK → guests | primary guest |
-| room_id | FK → rooms | allocated room |
-| source | ENUM('PHONE','WALK_IN') | no online source exists |
-| status | ENUM(see workflow) | `CONFIRMED, CHECKED_IN, CHECKED_OUT, CANCELLED, NO_SHOW` |
-| check_in_date | DATE | |
-| check_out_date | DATE | must be > check_in_date |
-| rate_snapshot | NUMERIC(12,2) | nightly rate at booking time |
-| guest_token_hash | TEXT UNIQUE | hash of guest portal token; plaintext never stored |
-| checkout_at | TIMESTAMPTZ NULL | actual checkout timestamp (drives 24h token expiry) |
-| created_by | FK → users | |
-| created_at / updated_at | TIMESTAMPTZ | |
+| booking_ref | VARCHAR(16) UNIQUE INDEXED | server-generated `SSH-XXXXXXXX` (UUID-derived; unique without counters) |
+| guest_id | FK → guests RESTRICT INDEXED | must be an **active** guest at creation |
+| room_id | FK → rooms RESTRICT INDEXED | allocated room (must be active + AVAILABLE) |
+| room_type_id | FK → room_types RESTRICT INDEXED | stamped from the room at creation/reallocation |
+| status | VARCHAR(16) INDEXED | `CONFIRMED` or `CANCELLED` only (Phase 3.2) |
+| source | VARCHAR(16) | `PHONE` or `WALK_IN` (no online source exists) |
+| check_in_date | DATE INDEXED | inclusive |
+| check_out_date | DATE | exclusive; CHECK `check_out_date > check_in_date` |
+| nights | INT CHECK ≥ 1 | `(check_out − check_in).days`, computed server-side |
+| number_of_guests | INT CHECK ≥ 1 | expected guests (1–20) |
+| notes | TEXT NULL | staff notes |
+| night_rate_snapshot | NUMERIC(12,2) CHECK ≥ 0 | nightly rate at booking time (Decimal; never recomputed from mutable rates) |
+| rate_id | UUID NULL | `room_rates.id` version used |
+| room_subtotal | NUMERIC(12,2) CHECK ≥ 0 | `night_rate_snapshot × nights` (Decimal, 2dp) |
+| tax_type_snapshot | VARCHAR(16) | `NONE` default when no tax settings exist |
+| tax_rate_snapshot | NUMERIC(5,2) NULL | copied tax rate; NULL when NONE |
+| tax_pricing_mode_snapshot | VARCHAR(16) | `INCLUSIVE`/`EXCLUSIVE` (`EXCLUSIVE` default) |
+| total_amount | NUMERIC(12,2) CHECK ≥ 0 | `== room_subtotal` in Phase 3.2; tax computation belongs to billing (Phase 4) |
+| created_by / updated_by | UUID NULL | staff user ids |
+| created_at / updated_at | TIMESTAMPTZ | `CURRENT_TIMESTAMP` defaults |
+| cancelled_at | TIMESTAMPTZ NULL | set on cancellation |
+| cancellation_reason | TEXT NULL | optional reason (policy TBD) |
 
-**Overlap prevention (defence in depth):**
-1. Application check on create/modify (SELECT FOR UPDATE on room row, then verify no overlapping active booking).
-2. PostgreSQL exclusion constraint using `daterange` if the btree_gist extension is acceptable, **or** a serializable transaction + advisory lock per room.
-3. Unique partial index alone is insufficient for ranges — the app check + transaction is the primary guard; exclusion constraint is the backstop.
+Not in Phase 3.2 (deferred): `guest_token_hash`, `checkout_at`, folio/payment links — added by later milestones. No guest PII is copied into the booking; `guest_id` is the only link.
+
+**Overlap prevention (defence in depth, Phase 3.2 choice):**
+1. Application check on create/modify (SELECT FOR UPDATE on the room row, then verify no overlapping active booking) — serialises concurrent staff attempts per room.
+2. PostgreSQL exclusion constraint `excl_bookings_room_daterange`: `EXCLUDE USING gist (room_id WITH =, daterange(check_in_date, check_out_date, '[)') WITH &&) WHERE (status <> 'CANCELLED')`, requiring the `btree_gist` extension. Added in the migration (raw SQL; the ORM model intentionally omits it so SQLite test schemas still build). Integrity errors map to `409 CONFLICT`.
+3. Unique partial index alone is insufficient for ranges — the app check + transaction is the primary guard; the exclusion constraint is the backstop.
+
+SQLite has no exclusion constraint; its guard is the service-level room-row lock (writes are serialised). Availability queries use the same `[check_in, check_out)` predicate everywhere (`existing.check_in < new.check_out AND existing.check_out > new.check_in`); cancelled bookings are excluded from both.
 
 ### 2.11 `folio_entries` (append-only)
 | Field | Type | Notes |
@@ -155,9 +169,10 @@ bookings ──< message_log
 
 ## 4. Integrity rules
 - FK constraints everywhere; `ON DELETE RESTRICT` for financial/guest history.
-- Check constraints: `check_out_date > check_in_date`; `payments.amount > 0`; `folio_entries.amount <> 0`.
-- Unique: `users.username`, `rooms.room_number`, `bookings.booking_ref`, `bookings.guest_token_hash`.
-- Indexes: `bookings(room_id, status, check_in_date, check_out_date)`, `payments(booking_id)`, `folio_entries(booking_id)`, `guests(phone)`, `audit_log(created_at)`, `sessions(user_id)`.
+- Check constraints: bookings `check_out_date > check_in_date`, `nights >= 1`, `number_of_guests >= 1`, money `>= 0`; (Phase 4 adds `payments.amount > 0`, `folio_entries.amount <> 0`).
+- Unique: `users.username`, `rooms.room_number`, `bookings.booking_ref` (Phase 5 adds `bookings.guest_token_hash`).
+- Indexes: `bookings(room_id, status, check_in_date, guest_id, room_type_id)`; `guests(phone)`, `audit_log(created_at)`, `sessions(user_id)`; (Phase 4 adds `payments(booking_id)`, `folio_entries(booking_id)`).
+- PostgreSQL-only: exclusion constraint `excl_bookings_room_daterange` on `bookings` (see §2.10); not present in SQLite/ORM metadata.
 
 ## 5. Migrations
 - Alembic autogenerate is a starting point only — **every migration reviewed manually** before merge.

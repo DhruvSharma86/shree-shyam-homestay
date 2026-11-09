@@ -34,12 +34,13 @@ class Guest(Base):
 
     __tablename__ = "guests"
     __table_args__ = (
-        # DB-level guard against concurrent duplicate creation:
-        # one active guest per (phone, normalized name).
+        # DB-level guard: stored full_name is already whitespace-collapsed
+        # (service canonicalizes on write), so lower(full_name) matches
+        # the service duplicate rule.
         Index(
             "ix_guests_phone_name_active",
             "phone",
-            text("lower(trim(full_name))"),
+            text("lower(full_name)"),
             unique=True,
             postgresql_where=text("is_active = TRUE"),
             sqlite_where=text("is_active = 1"),

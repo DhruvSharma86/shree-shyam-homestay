@@ -15,6 +15,7 @@ from app import models as _models  # noqa: F401  (registers ORM models on Base.m
 from app.api.health import router as health_router
 from app.auth.router import router as auth_router
 from app.auth.users_router import router as users_router
+from app.bookings.router import router as bookings_router
 from app.core.config import get_settings
 from app.core.errors import register_error_handlers
 from app.core.logging_config import configure_logging, get_logger
@@ -56,6 +57,7 @@ def create_app() -> FastAPI:
     app.include_router(hotel_router, prefix=settings.api_v1_prefix)
     app.include_router(restaurant_router, prefix=settings.api_v1_prefix)
     app.include_router(guests_router, prefix=settings.api_v1_prefix)
+    app.include_router(bookings_router, prefix=settings.api_v1_prefix)
 
     logger.info(
         "Application initialised",

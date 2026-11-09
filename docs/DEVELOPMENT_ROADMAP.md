@@ -1,7 +1,7 @@
 # Development Roadmap — Shree Shyam Home Stay
 
-> **Current status: Phase 2.2 (Admin Dashboard & frontend) — ✅ complete.**
-> Phases 1.1–1.2 (foundation, auth/RBAC) and 2.1 (hotel config backend) delivered and verified. Phase 2.2 delivered: Next.js Admin Dashboard (login, dashboard, hotel, room-types, rooms, room-rates, tax-settings, restaurant, menu, cab-providers, users, audit-logs pending) — 9 frontend tests passing, typecheck/lint/build clean, backend 91 tests passing. Full details in `frontend/README.md`.
+> **Current status: Phase 3.2 (Booking management, backend) — ✅ complete.**
+> Phases 1.1–1.2 (foundation, auth/RBAC), 2.1 (hotel config backend), 2.2 (Admin Dashboard) and 3.1 (guests) delivered. Phase 3.2 delivered: bookings CRUD, availability, overlap prevention, rate/tax snapshots, `CONFIRMED → CANCELLED` lifecycle, PostgreSQL exclusion constraint + concurrency tests, RBAC + audit — backend SQLite tests green; PostgreSQL verified via GitHub Actions (see CI). No check-in/checkout/billing/frontend in this milestone.
 
 ## Phase 0 — Documentation & design ✅ (this milestone)
 - [x] README, SRS, Architecture, Database, RBAC, Booking/Billing workflows, Guest portal, API design, Roadmap
@@ -41,7 +41,6 @@
 - **Exit criteria met:** Admin can manage all hotel configuration without DB/code; no invented metrics/prices/GST/rooms. Unit tests only — no Playwright E2E yet.
 - Next: Phase 3 (guests & bookings, backend) — do not start automatically.
 
-### Phase 3 — Guests & bookings
 #### Phase 3.1 — Guest registration & guest records ✅ (complete, 2026-11-07)
 - [x] `guests` model (E.164 phone, whitespace-collapsed name, partial unique index on active phone+name), migration `d4e5f6a7b8c9`
 - [x] APIs: `POST/GET /api/v1/guests`, `GET/PATCH /api/v1/guests/{id}`, `POST /api/v1/guests/{id}/deactivate` (both roles via `guests.read/write`, CSRF, audit `GUEST_CREATED/UPDATED/DEACTIVATED` without PII)
@@ -49,8 +48,18 @@
 - [x] Aadhaar/document handling **explicitly deferred** (no image/number stored; legal/encryption/retention design still required)
 - [x] **125 tests passing, 3 skipped** (SQLite); Alembic upgrade/downgrade clean on persistent SQLite; PostgreSQL integration tests exist and run in CI (fail-if-skip guard) — awaiting first CI run
 - **Exit criteria met:** register, retrieve, search, update, deactivate with audit; no booking/billing/portal/frontend changes.
-- Next: Phase 3.2 (bookings) — do not start automatically.
-- Remaining in Phase 3: booking CRUD, availability, overlap prevention, rate snapshots, lifecycle.
+
+#### Phase 3.2 — Booking management ✅ (complete, backend only)
+- [x] `bookings` model + migration `e5f6a7b8c9d0` (FKs: guest/room/room-type RESTRICT; check constraints; PostgreSQL exclusion constraint `excl_bookings_room_daterange` via `btree_gist`, partial `status <> 'CANCELLED'`)
+- [x] APIs: `POST/GET /api/v1/bookings`, `GET/PATCH /api/v1/bookings/{id}`, `POST /api/v1/bookings/{id}/cancel`, `GET /api/v1/bookings/availability[/{room_id}]` (both roles via `bookings.read/write/cancel`, CSRF, audit `BOOKING_CREATED/UPDATED/CANCELLED` without PII)
+- [x] Date convention `[check_in, check_out)`, overlap/conflict rules, maintenance/inactive-room rejection, past-date rejection, cancelled-release + idempotent cancel
+- [x] Rate snapshot (single-rate policy, mid-stay change → 422) + tax snapshot (NONE default); `Decimal` money; deactivated guests cannot book; no folio/token/payment/portal/check-in/out — all deferred
+- [x] Concurrency: room-row `FOR UPDATE` + PostgreSQL exclusion constraint; threaded PostgreSQL test + SQLite DB-guard test
+- **Exit criteria met (backend):** phone/walk-in creation, list/filter, retrieval, update, cancel, availability, audit; no check-in/checkout/billing/frontend changes.
+- Next: Phase 4 (billing, payments, receipts) — do not start automatically.
+
+### Phase 3 — Guests & bookings ✅ (complete)
+- Phase 3.1 guests + Phase 3.2 bookings delivered. No Phase 3 work remains.
 
 ## Phase 4 — Billing, payments, receipts
 - Folio engine (charges, discounts with limits, reversals), payments (advance/check-in/checkout, cash/UPI/card), transactions

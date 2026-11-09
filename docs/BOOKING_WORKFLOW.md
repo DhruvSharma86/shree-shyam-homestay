@@ -4,53 +4,54 @@ Bookings originate from **telephone calls or walk-ins only**. No online booking 
 
 ## 1. Lifecycle state machine
 
+**Phase 3.2 implemented scope:** `CONFIRMED → CANCELLED` only. The full state machine below is the approved direction; check-in/out, folio, token and no-show transitions arrive in Phases 4–5 and are not implemented yet.
+
 ```
                  ┌──────────┐
                  │ CONFIRMED│  (booking created, room reserved)
                  └────┬─────┘
         check-in      │          cancel
               ┌───────▼───────┐        ┌────────────┐
-              │  CHECKED_IN   │───────▶│ CANCELLED  │
+              │  CHECKED_IN   │───────▶│ CANCELLED  │  ← Phase 3.2: only this transition exists
               └───────┬───────┘        └────────────┘
-         checkout     │
+         checkout     │                   (terminal, no reopen; new booking instead)
               ┌───────▼───────┐
-              │ CHECKED_OUT   │  (final settlement done; guest token expires +24h)
+              │ CHECKED_OUT   │  (final settlement done; guest token expires +24h)  ← Phase 4
               └───────────────┘
 
-CONFIRMED ──(check-in date passes, no check-in recorded)──▶ NO_SHOW (manual flag by staff)
+CONFIRMED ──(check-in date passes, no check-in recorded)──▶ NO_SHOW (manual flag by staff)  ← Phase 4
 ```
 
 | Transition | Who | Preconditions |
 |---|---|---|
-| → `CONFIRMED` | RECEPTIONIST / ADMIN | Guest exists; room available for full date range; rate snapshot taken |
-| `CONFIRMED` → `CHECKED_IN` | RECEPTIONIST / ADMIN | Today ≥ check-in date (early check-in allowed with note — TBD policy); 1-night payment recorded |
-| `CHECKED_IN` → `CHECKED_OUT` | RECEPTIONIST / ADMIN | Outstanding balance settled (payment or approved write-off — TBD); receipt generated |
-| `CONFIRMED` → `CANCELLED` | RECEPTIONIST / ADMIN | Cancellation policy applied (TBD — no fee rules invented) |
-| `CONFIRMED` → `NO_SHOW` | RECEPTIONIST / ADMIN | Manual flag after check-in date passes without arrival |
+| → `CONFIRMED` | RECEPTIONIST / ADMIN | Guest exists **and is active**; room available for full date range; rate snapshot taken |
+| `CONFIRMED` → `CANCELLED` | RECEPTIONIST / ADMIN | Cancellation policy applied (fees **TBD** — no fee rules invented); room released immediately |
+| `CONFIRMED` → `CHECKED_IN` | RECEPTIONIST / ADMIN | **Phase 4 (deferred)** — Today ≥ check-in date; 1-night payment recorded |
+| `CHECKED_IN` → `CHECKED_OUT` | RECEPTIONIST / ADMIN | **Phase 4 (deferred)** — balance settled; receipt generated |
+| `CONFIRMED` → `NO_SHOW` | RECEPTIONIST / ADMIN | **Phase 4 (deferred)** — manual flag after check-in date passes without arrival |
 
-`CHECKED_OUT`, `CANCELLED`, `NO_SHOW` are terminal — bookings cannot be reopened (a new booking is created instead).
+`CHECKED_OUT`, `CANCELLED`, `NO_SHOW` are terminal — bookings cannot be reopened (a new booking is created instead). Repeated cancels in Phase 3.2 are idempotent (return `200` with status `CANCELLED`, no new audit row). PATCH on a cancelled booking → `422`.
 
 ## 2. Creation flow (phone / walk-in)
 
+**Phase 3.2 (implemented):**
 ```
-1. Search guest by phone → found: reuse | not found: register guest
-2. Check room availability for [check_in, check_out)
-3. Allocate specific room (or type → system suggests available rooms)
-4. Snapshot nightly rate (room_rates current row) into booking.rate_snapshot
-5. Create folio: ROOM_CHARGE entry for nights × rate (full stay; balance due at checkout)
-6. Generate guest token (crypto-secure), store hash, build portal link
-7. Record advance payment if taken (→ payments, stage=ADVANCE)
-8. Send welcome WhatsApp with personalised guest link (mock in dev)
-9. Booking status = CONFIRMED
+1. Search guest by phone → found: reuse | not found: register guest (Phase 3.1 API)
+2. Reject deactivated guests (422) — reactivate via guest API first
+3. Check room availability for [check_in, check_out)   ← GET /bookings/availability
+4. Allocate specific room (must be active + AVAILABLE)
+5. Snapshot nightly rate (single rate covering the whole stay; mid-stay change → 422)
+6. Snapshot tax settings covering check-in (NONE default)
+7. Create booking: CONFIRMED, nights + Decimal subtotal/total
 ```
 
-Steps 4–7 run in **one DB transaction**. Any failure rolls everything back (no orphan folios/tokens).
+**Deferred to Phases 4–5:** folio ROOM_CHARGE entry, guest token, advance payments, WhatsApp. Phase 3.2 performs steps 1–7 only (no folio/token/payment). Steps run in one DB transaction; any failure rolls everything back (no orphan rows).
 
 ## 3. Overlap prevention
-- Availability check: no other booking in status `CONFIRMED`/`CHECKED_IN` for the same room overlapping `[check_in, check_out)`.
+- Availability check: no other booking in status `CONFIRMED` for the same room overlapping `[check_in, check_out)`.
 - Overlap test: `existing.check_in < new.check_out AND existing.check_out > new.check_in`.
-- Enforced in a transaction with `SELECT ... FOR UPDATE` on the room row; PostgreSQL exclusion constraint as backstop (see `docs/DATABASE_DESIGN.md` §2.10).
-- Double-booking is a **critical defect** — dedicated concurrency tests required.
+- Enforced in a transaction with `SELECT … FOR UPDATE` on the room row; PostgreSQL exclusion constraint as backstop (see `docs/DATABASE_DESIGN.md` §2.10) — **implemented in Phase 3.2** (migration `e5f6a7b8c9d0`).
+- Double-booking is a **critical defect** — dedicated concurrency tests required (SQLite service test + PostgreSQL threaded test in CI).
 
 ## 4. Room allocation rules
 - Receptionist allocates a **specific room**; system shows only available rooms for the dates.
@@ -58,9 +59,9 @@ Steps 4–7 run in **one DB transaction**. Any failure rolls everything back (no
 - Room type changes after booking require ADMIN (prerequisite: no overlapping conflict) — TBD whether receptionists may reallocate within same type.
 
 ## 5. Date rules
-- `check_out_date > check_in_date` enforced (DB + API).
+- `check_out_date > check_in_date` enforced (DB + API). Past check-ins rejected (422).
 - Nights = `check_out_date − check_in_date`.
-- Early check-in / late checkout: allowed operationally; extra-night charges added as folio entries if policy requires (TBD).
+- Early check-in / late checkout: allowed operationally; extra-night charges added as folio entries if policy requires (TBD, Phase 4).
 - Dates are hotel-local (timezone stored in `hotel_info`; TBD — default IST).
 
 ## 6. Cancellation & no-show
@@ -68,7 +69,8 @@ Steps 4–7 run in **one DB transaction**. Any failure rolls everything back (no
 - Cancelled/no-show bookings release the room immediately for the remaining dates.
 
 ## 7. Booking history & search
-- Search by: guest name, phone, booking ref, room, date range, status.
+- Phase 3.2: `GET /bookings?status=&guest_id=&room_id=&check_in_from=&check_in_to=` + pagination (newest first). Guest/room histories are these two filters.
+- Search by guest name/phone/ref is deferred (would need a join + PII handling; name/phone search exists on guests).
 - Guest history: all bookings for the primary guest, newest first.
 - Room history: all bookings for the room (for audit/occupancy).
 

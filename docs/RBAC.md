@@ -75,6 +75,9 @@ Receptionists can see bookings/guests **needed for operations** (today's arrival
 ### Phase 3.1 guest enforcement (implemented 2026-11-07)
 `/api/v1/guests` READ endpoints require `guests.read`; mutating endpoints (`POST`, `PATCH`, `POST /{id}/deactivate`) require `guests.write` + CSRF. Both ADMIN and RECEPTIONIST hold these permissions (operational workflow). Default-deny preserved: unauthenticated → 401. Audit: `GUEST_CREATED`, `GUEST_UPDATED`, `GUEST_DEACTIVATED` appended in the mutation transaction; metadata contains field names and ids only (no names/phones/emails/addresses/notes). Aadhaar/ID documents are not collected in Phase 3.1 (see DATABASE_DESIGN §2.9).
 
+### Phase 3.2 booking enforcement (implemented 2026-11-09)
+`/api/v1/bookings` READ endpoints (`GET`, `GET /{id}`, `GET /availability[/{room_id}]`) require `bookings.read`; `POST` and `PATCH /{id}` require `bookings.write` + CSRF; `POST /{id}/cancel` requires `bookings.cancel` + CSRF. Both ADMIN and RECEPTIONIST hold all three in this milestone (operational workflow); `bookings.checkin` / `bookings.checkout` permissions exist for Phase 4 but no endpoints use them yet. Default-deny preserved: unauthenticated → 401, missing CSRF → 403. Audit: `BOOKING_CREATED`, `BOOKING_UPDATED`, `BOOKING_CANCELLED` with `metadata.fields` only (no PII). Booking responses expose `guest_id`/`room_id`, never guest name/phone/email.
+
 ## 6. Examples of enforcement checks
 | Endpoint | Required permission |
 |---|---|
@@ -85,3 +88,7 @@ Receptionists can see bookings/guests **needed for operations** (today's arrival
 | `POST /api/bookings/{id}/discounts` | `billing.discounts.write` (+ amount ≤ limit for RECEPTIONIST) |
 | `POST /api/v1/guests` | `guests.write` (both roles) |
 | `GET /api/v1/guests?q=...` | `guests.read` (both roles) |
+| `POST /api/v1/bookings` | `bookings.write` (both roles, CSRF required) |
+| `PATCH /api/v1/bookings/{id}` | `bookings.write` (both roles, CSRF required) |
+| `POST /api/v1/bookings/{id}/cancel` | `bookings.cancel` (both roles, CSRF required) |
+| `GET /api/v1/bookings` / `GET /api/v1/bookings/availability` | `bookings.read` (both roles) |

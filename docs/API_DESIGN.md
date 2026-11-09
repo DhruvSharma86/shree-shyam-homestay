@@ -65,21 +65,24 @@ Public/guest-portal read endpoints for the above are deferred (Phases 5–6). `w
 | `/guests` | GET, POST | GET: `?q=` searches name/email/phone, `?page=&page_size=`, `?include_inactive=`; sorted `created_at` desc; POST: phone normalized to E.164 |
 | `/guests/{id}` | GET, PATCH | PATCH covers `full_name, phone, email, address, notes` only; `is_active` rejected (422) |
 | `/guests/{id}/deactivate` | POST | Soft-deactivation, idempotent; audit `GUEST_DEACTIVATED` |
-| `/guests/{id}/bookings` | GET | Deferred — bookings do not exist yet (Phase 3.2) |
+| `/guests/{id}/bookings` | GET | Deferred — use `GET /bookings?guest_id=` (Phase 3.2) instead |
 
 Duplicate rule: exact normalized phone + case-insensitive whitespace-collapsed name on an **active** guest → `409 CONFLICT` with `details.existing_guest_id` (no silent merge). Same phone + different name allowed. Deactivated records never block re-registration. Invalid phone → `422 VALIDATION_ERROR`. Mutations require CSRF and write audit rows (`GUEST_CREATED/UPDATED/DEACTIVATED`) without PII in metadata.
 
-### 3.4 Bookings & availability (`bookings.*`)
+### 3.4 Bookings & availability (`bookings.*`) — ✅ implemented (Phase 3.2, backend only)
 | Endpoint | Method | Notes |
 |---|---|---|
-| `/availability` | GET `?check_in=&check_out=&room_type_id=` | rooms/types free for range |
-| `/bookings` | GET (filters), POST create | creates folio + token atomically |
-| `/bookings/{id}` | GET, PATCH (dates/room — overlap rechecked) | |
-| `/bookings/{id}/check-in` | POST | records check-in payment stage default |
-| `/bookings/{id}/checkout` | POST | settlement; returns receipt |
-| `/bookings/{id}/cancel` | POST | with reason |
-| `/bookings/{id}/no-show` | POST | |
-| `/bookings/{id}/guest-link` | GET / POST rotate | rotate = `portal.tokens.manage` (ADMIN) |
+| `/bookings/availability` | GET `?check_in=&check_out=` | list of `{room_id, available}` for all active AVAILABLE rooms |
+| `/bookings/availability/{room_id}` | GET `?check_in=&check_out=` | single-room `{room_id, available, check_in_date, check_out_date}` |
+| `/bookings` | GET (filters), POST create | GET filters: `status, guest_id, room_id, check_in_from, check_in_to` + pagination; POST creates CONFIRMED booking with rate/tax snapshot |
+| `/bookings/{id}` | GET, PATCH (dates/room/notes/guests — overlap rechecked) | cancelled bookings: PATCH → 422 |
+| `/bookings/{id}/cancel` | POST | idempotent, never deletes; `{reason}` optional |
+| `/bookings/{id}/check-in` | POST | **Deferred** — folio/settlement in Phase 4 |
+| `/bookings/{id}/checkout` | POST | **Deferred** — Phase 4 |
+| `/bookings/{id}/no-show` | POST | **Deferred** |
+| `/bookings/{id}/guest-link` | GET / POST rotate | **Deferred** — guest portal in Phase 5 |
+
+Create body: `{guest_id, room_id, source: PHONE|WALK_IN (default PHONE), check_in_date, check_out_date, number_of_guests (1–20, default 1), notes?}`. Success `201` returns the booking with `booking_ref`, `nights`, `night_rate_snapshot`, `room_subtotal`, `tax_*_snapshot`, `total_amount`. Overlap → `409 CONFLICT`; invalid dates/past dates/inactive guest/maintenance room/no covering rate/mid-stay rate change → `422 VALIDATION_ERROR`. Date convention: check-in inclusive, check-out exclusive. No folio, token, payment, or portal fields exist in this milestone.
 
 ### 3.5 Billing (`billing.*`)
 | Endpoint | Method | Notes |
@@ -119,13 +122,23 @@ Duplicate rule: exact normalized phone + case-insensitive whitespace-collapsed n
 | `/public/rooms` | GET | room types + nightly rates (configurable; shown only if ADMIN enables — TBD) + "call for booking" info |
 
 ## 4. Validation rules (Pydantic v2)
-- Dates: `check_out > check_in`; payments `amount > 0`; discounts require `reason`.
+- Dates: `check_out > check_in`; bookings in the past rejected; overlap on the same room rejected (`409`).
 - Phone: normalised to E.164 on write; search tolerant of formatting.
-- All IDs are UUIDs; booking refs human-friendly (`SSH-000123`).
+- All IDs are UUIDs; booking refs look like `SSH-XXXXXXXX` (`booking_ref`, server-generated from UUID).
+- Money: `night_rate_snapshot`, `room_subtotal`, `total_amount` are `NUMERIC(12,2)` computed with Python `Decimal` (`rate × nights`, quantised to 2dp); no float money math anywhere.
 
 ## 5. Idempotency & concurrency
-- Booking create & payment record accept `Idempotency-Key` header (recommended) to prevent double-submits from retries.
-- State transitions use optimistic checks (`WHERE status = expected`) → `409 INVALID_STATE` on mismatch.
+- Booking create & payment record accept `Idempotency-Key` header (recommended) to prevent double-submits from retries. **Not yet implemented** — Phase 3.2 relies on room-row locks + PostgreSQL exclusion constraint instead.
+- State transitions use explicit status checks: `CONFIRMED → CANCELLED` only; cancel is idempotent; PATCH on cancelled → `422 VALIDATION_ERROR` (Phase 3.2). CHECKED_IN/OUT and NO_SHOW are not defined in this milestone.
+
+## 5a. Phase 3.2 booking behaviour (implemented)
+- **Lifecycle:** `CONFIRMED` on create → `CANCELLED` via `POST /bookings/{id}/cancel`; no other transitions. Cancelled rows remain for audit/history and never block availability; cancel is idempotent.
+- **Availability:** `[check_in, check_out)` — `existing.check_in < new.check_out AND existing.check_out > new.check_in`; same-day checkout/check-in is allowed. Inactive/MAINTENANCE rooms rejected. `GET /bookings/availability[/{room_id}]` reports `available: bool`.
+- **Double-booking prevention:** service `SELECT … FOR UPDATE` on the room row + PostgreSQL exclusion constraint `excl_bookings_room_daterange` (gist, `room_id WITH =`, `daterange(check_in_date, check_out_date, '[)') WITH &&`, `WHERE status <> 'CANCELLED'`, requires `btree_gist`). Constraint is added by migration `e5f6a7b8c9d0`, not by `Base.metadata.create_all`. Integrity errors → `409 CONFLICT`. SQLite has no exclusion constraint; the service row lock is its guard (documented in the migration).
+- **Rate snapshot (single-rate policy):** exactly one active `room_rates` version must cover the whole stay (`valid_from ≤ check_in`, `valid_until ≥ checkout − 1day`). A rate version starting inside the stay → `422` ("adjust rate validity, one rate must cover the entire stay") — never blended silently. No covering rate → `422` (no prices invented). Later rate changes never rewrite existing snapshots.
+- **Tax snapshot:** `tax_settings` covering check-in is copied (`tax_type_snapshot`, `tax_rate_snapshot`, `tax_pricing_mode_snapshot`); when none is configured → `NONE/null/EXCLUSIVE` with `total == room_subtotal`. Tax amounts are calculated in billing (Phase 4), not here.
+- **Guest integration:** booking requires an **active** existing guest; deactivated/missing guest → `422` (guest must be reactivated via guest API first — no silent rebooking, no auto-creation). Responses contain `guest_id` only (no name/phone/email).
+- **Permissions & CSRF:** GETs need `bookings.read`, create/update need `bookings.write`, cancel needs `bookings.cancel`; all mutations require CSRF. Audit: `BOOKING_CREATED/UPDATED/CANCELLED` with `metadata.fields` only (no PII).
 
 ## 6. Non-goals
 - No GraphQL, no websockets, no webhooks (v1). No public API for third parties.

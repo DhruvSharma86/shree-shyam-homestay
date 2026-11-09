@@ -88,6 +88,8 @@ Modular monolith backend (FastAPI) + separate Next.js frontend, PostgreSQL datab
 | FR-BKG-06 | Booking history MUST be viewable per guest and per room. |
 | FR-BKG-07 | A booking's room rate MUST be snapshotted at creation (see FR-CFG-03). |
 
+**Phase 3.2 status (implemented 2026-11-09, backend only):** FR-BKG-01 (guest/room/dates/guests/source/notes), FR-BKG-02 (app lock + PostgreSQL exclusion constraint), FR-BKG-03 (availability endpoints), FR-BKG-04 (minimal `CONFIRMED → CANCELLED` lifecycle), FR-BKG-06 (guest/room-filtered list + pagination), FR-BKG-07 (single-rate snapshot + tax snapshot; mid-stay rate changes rejected rather than blended). FR-BKG-05 is **partial**: cancellation implemented; check-in/checkout/no-show, folio creation, tokens, payments and portal links are deferred to Phases 4–5 (see ROADMAP). A deactivated guest cannot be booked until reactivated via the guest API. No online-booking source exists; the website remains advertisement-only.
+
 ### 3.5 Billing & payments
 | ID | Requirement |
 |---|---|

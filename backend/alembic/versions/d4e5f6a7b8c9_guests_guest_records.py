@@ -49,9 +49,13 @@ def upgrade() -> None:
     op.create_index(op.f("ix_guests_is_active"), "guests", ["is_active"], unique=False)
     op.create_index(op.f("ix_guests_phone"), "guests", ["phone"], unique=False)
     # DB-level guard: one active guest per (phone, normalized name).
+    # PostgreSQL: boolean predicate; SQLite: 1-based. Stored names are
+    # whitespace-collapsed by the service, so lower(full_name) is canonical.
+    _dialect = op.get_bind().dialect.name
+    _active_pred = "is_active = TRUE" if _dialect == "postgresql" else "is_active = 1"
     op.execute(
         "CREATE UNIQUE INDEX ix_guests_phone_name_active "
-        "ON guests (phone, lower(trim(full_name))) WHERE is_active = 1"
+        f"ON guests (phone, lower(full_name)) WHERE {_active_pred}"
     )
     # ### end Alembic commands ###
 
