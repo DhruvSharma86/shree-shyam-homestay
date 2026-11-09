@@ -164,6 +164,16 @@
 - **Exit criteria met:** deliberate retry policy + classified recovery covered by automated tests; raw-token recovery model unchanged (ADMIN rotation).
 - Next: Phase 5.3 Priority 6 (operational readiness) — do not start automatically.
 
+#### Phase 5.3 Priority 6 — Operational readiness ✅ (complete, 2026-11-09)
+- [x] Production guards (fail-fast): `APP_DEBUG`/dev `SESSION_SECRET`/SQLite-or-placeholder `DATABASE_URL`/wildcard-or-empty `CORS_ORIGINS` all rejected at startup in production; `CORS_ORIGINS` now env-driven (single-entry default preserves dev)
+- [x] Health/monitoring: liveness (no DB) / readiness (DB connectivity → 503 on failure), no secrets in bodies (tests); schema-readiness deliberately manual (`alembic current` in runbook) to avoid probe flapping
+- [x] Backup/restore: `ops/backup-postgres.{ps1,sh}` + `ops/restore-postgres.{ps1,sh}` (explicit targets, password-via-env only, prod-name refusal without `--allow-production`); restore procedure **NOT VERIFIED** (no live PostgreSQL for the restore step; CI fresh-PG migration is the verified path)
+- [x] Docs: `docs/OPERATIONS.md` — deployment runbook (env, migration order, startup, proxy/TLS, ADMIN provisioning, smoke checks), backup/restore runbook, incident response (financial rows never edited/deleted), readiness checklist with PASS/PARTIAL/NOT VERIFIED/BLOCKED labels
+- [x] Deps: npm `package-lock.json` + `npm audit` 0 vulns; backend `pyproject` bounds only (no lockfile — PARTIAL), no backend scanner in toolchain (NOT VERIFIED)
+- [x] Config/health tests: 10 new (`test_operations.py`); full backend 251 passed/17 skipped; frontend 50/50; ruff/mypy/build clean
+- **Exit criteria met:** operational posture documented + guarded; verdict — **ready for controlled staging deployment** (production requires prod env, PG restore drill, lockfile/scanner follow-ups — see checklist).
+- Phase 5.3 (guest experience hardening & operational readiness) is **closed**. Next: Phase 6 (reports/audit viewer/public website) — do not start automatically.
+
 ## Phase 6 — Reports, audit viewer, public website
 - Admin financial/occupancy reports; audit-log viewer
 - Public marketing site (Home/About/Rooms/Gallery/Facilities/Restaurant/Attractions/Contact, Maps embed, tel: links) — **no booking functionality**

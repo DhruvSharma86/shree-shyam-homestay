@@ -69,10 +69,10 @@ def create_app() -> FastAPI:
     )
 
     # CORS: the Next.js frontend is a separate origin in development.
-    # Tighten allow_origins via env in production (Phase 1.2+).
+    # Production sets CORS_ORIGINS to the real frontend origin.
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["http://localhost:3000"],
+        allow_origins=settings.cors_origin_list,
         allow_credentials=True,
         allow_methods=["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
         allow_headers=["*"],

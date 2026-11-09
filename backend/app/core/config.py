@@ -7,6 +7,7 @@ list of supported variables.
 
 from functools import lru_cache
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -37,6 +38,15 @@ class Settings(BaseSettings):
 
     # --- API -------------------------------------------------------------
     api_v1_prefix: str = "/api/v1"
+    # Comma-separated browser origins allowed to call the API with
+    # credentials. Default keeps local frontend dev working. Production
+    # must set the real frontend origin (wildcard is rejected in production).
+    cors_origins: str = "http://localhost:3000"
+
+    @property
+    def cors_origin_list(self) -> list[str]:
+        """Parsed CORS origins (trimmed, non-empty entries only)."""
+        return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
 
     # --- Secrets (required in production; placeholders are for local dev) -
     # Session signing / encryption keys are introduced in Phase 1.2 with the
@@ -77,6 +87,26 @@ class Settings(BaseSettings):
     def is_production(self) -> bool:
         """Return True when running in the production environment."""
         return self.app_env.lower() == "production"
+
+    @model_validator(mode="after")
+    def _guard_production_settings(self) -> "Settings":
+        """Fail fast on unsafe production configuration (never silently dev)."""
+        if not self.is_production:
+            return self
+        if self.app_debug:
+            raise ValueError("APP_DEBUG must be False in production.")
+        if self.session_secret == "dev-only-insecure-secret-change-me":
+            raise ValueError("SESSION_SECRET must be set to a strong value in production.")
+        if self.database_url.startswith("sqlite"):
+            raise ValueError("Production requires a PostgreSQL DATABASE_URL (not SQLite).")
+        if "change_me" in self.database_url:
+            raise ValueError("Production DATABASE_URL must not contain the placeholder password.")
+        origins = self.cors_origin_list
+        if not origins:
+            raise ValueError("CORS_ORIGINS must list the frontend origin in production.")
+        if "*" in origins:
+            raise ValueError("Wildcard CORS origins are forbidden in production (credentials).")
+        return self
 
 
 @lru_cache

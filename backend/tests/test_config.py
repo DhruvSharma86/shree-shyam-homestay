@@ -15,6 +15,11 @@ def test_settings_from_environment(monkeypatch) -> None:
     """Environment variables override defaults (config never reads code)."""
     monkeypatch.setenv("APP_ENV", "production")
     monkeypatch.setenv("LOG_LEVEL", "WARNING")
+    # Priority 6: production startup fails fast on dev defaults, so a valid
+    # production env must supply the guarded values explicitly.
+    monkeypatch.setenv("SESSION_SECRET", "env-provided-strong-secret-0123456789")
+    monkeypatch.setenv("DATABASE_URL", "postgresql+psycopg://hotel_app:env-pw@db:5432/shree_shyam")
+    monkeypatch.setenv("CORS_ORIGINS", "https://stay.example.com")
     settings = Settings()
     assert settings.app_env == "production"
     assert settings.is_production is True
