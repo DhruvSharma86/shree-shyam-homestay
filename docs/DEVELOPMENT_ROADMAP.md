@@ -145,6 +145,15 @@
 - **Exit criteria met:** confirmed issues fixed with regression tests; residual risks documented in `docs/SECURITY.md`.
 - Next: Phase 5.3 Priority 4 (mobile/error hardening) — do not start automatically.
 
+#### Phase 5.3 Priority 4 — Guest portal mobile & accessibility ✅ (complete, 2026-11-09)
+- [x] Responsive fixes: stay grid 1-col on phones (2-col sm+), cab rows stack on phones, `min-w-0`/`flex-1` + `break-words`/`break-all` on long names/passphrases/numbers/descriptions, menu thumbs `shrink-0` + graceful `onError` hide (no distortion, no broken-image icon)
+- [x] Touch/keyboard: `min-h-11` (44px) buttons, `focus-visible` rings on Button + Call links, no hover-only controls, Cab Call is a real `tel:` anchor (link semantics) with contextual `aria-label`, Copy/Download buttons carry context labels
+- [x] Semantics/screen readers: `<section aria-labelledby>` landmarks (region role) for all six sections, single `h1` + `h2`/`h3` hierarchy, menu alt = dish name, `role="status"` empty states, `role="alert"` invalid-link + receipt-failure, Wi-Fi copy success/failure announcements with insecure-context fallback, reception/tourism phone/email as `tel:`/`mailto:` links
+- [x] Security preserved (Priority 3): `referrerPolicy="no-referrer"` kept (test), no token storage (test), no analytics/third-party scripts/deps, no-store/noindex headers untouched
+- [x] Tests: frontend 34/34 (5 new: regions/headings/links, Call/Copy/Download names+keyboard, long-string hooks, receipt-failure feedback, invalid-link alert) + no-referrer + headers contract. No backend changes.
+- **Exit criteria met:** guest portal usable at 320px–1440px per code-level classes (jsdom cannot measure pixels — see limitations); WCAG 2.2 AA practical coverage automated where jsdom allows.
+- Next: Phase 5.3 Priority 5 (error/connectivity) — do not start automatically.
+
 ## Phase 6 — Reports, audit viewer, public website
 - Admin financial/occupancy reports; audit-log viewer
 - Public marketing site (Home/About/Rooms/Gallery/Facilities/Restaurant/Attractions/Contact, Maps embed, tel: links) — **no booking functionality**

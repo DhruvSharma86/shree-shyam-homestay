@@ -69,3 +69,9 @@ The portal endpoint joins **only** the one booking identified by the token hash.
 - Whether guests see their running folio/balance mid-stay (recommend: **only final receipt**, to reduce disputes — needs stakeholder sign-off).
 - Inactivity cap value; portal language support (English-only initially).
 - Whether the token link is regenerated on extension of stay (recommend: same token, expiry recomputed at checkout).
+
+## 9. Mobile & accessibility (Priority 4, implemented 2026-11-09)
+- **Responsive:** stay grid is 1-col on phones / 2-col from `sm:`; cab rows stack on phones; long values use `min-w-0` + `break-words`/`break-all`; menu thumbnails are fixed-square `shrink-0` with graceful `onError` hide; layout container `max-w-3xl` with no horizontal scroll at 320px+ by code-level classes (pixel overflow is browser-only — jsdom cannot measure it; no browser/device run was performed).
+- **Touch/keyboard:** all actions ≥44px (`min-h-11`), no hover-only controls, Cab Call is a `tel:` anchor with a contextual `aria-label`; `focus-visible` rings on buttons and links.
+- **Semantics:** `<section aria-labelledby>` landmarks for all six sections; single `h1`, `h2` per section, `h3` per menu category; menu images use the dish name as `alt`; empty states are `role="status"`, invalid-link and receipt failures are `role="alert"`; Wi-Fi copy announces success/failure (with insecure-context fallback).
+- **Security preserved:** `referrerPolicy="no-referrer"` on menu images, no token persistence, no analytics/third-party scripts, `no-store`/`noindex` headers untouched (see `docs/SECURITY.md`).
