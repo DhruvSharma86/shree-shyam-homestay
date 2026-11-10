@@ -187,7 +187,12 @@ def portal_receipt(
     )
 
 
-@router.get("/{token}/receipt/download")
+@router.get(
+    "/{token}/receipt/download",
+    responses={
+        200: {"content": {"application/pdf": {"schema": {"type": "string", "format": "binary"}}}}
+    },
+)
 def portal_receipt_download(
     token: str,
     request: Request,
@@ -239,7 +244,23 @@ def portal_admin_status(
     )
 
 
-@router.post("/admin-revoke/{booking_id}", response_model=PortalTokenAdminResponse)
+@router.post(
+    "/admin-revoke/{booking_id}",
+    response_model=PortalTokenAdminResponse,
+    responses={
+        200: {
+            "content": {
+                "application/json": {
+                    "example": {
+                        "booking_id": "00000000-0000-0000-0000-000000000000",
+                        "active": False,
+                        "issued": False,
+                    }
+                }
+            }
+        }
+    },
+)
 def portal_admin_revoke(
     booking_id: uuid.UUID,
     request: Request,

@@ -2,8 +2,12 @@
 
 import uuid
 from decimal import Decimal
+from typing import Literal
 
 from pydantic import BaseModel, Field
+
+PaymentModeLiteral = Literal["CASH", "UPI", "CARD_POS"]
+PaymentStageLiteral = Literal["ADVANCE", "CHECK_IN", "CHECKOUT", "OTHER"]
 
 
 class FolioEntryResponse(BaseModel):
@@ -60,8 +64,8 @@ class PaymentCreate(BaseModel):
     """Record a staff-collected payment (Phase 4.2)."""
 
     amount: Decimal = Field(gt=0)
-    mode: str = "CASH"
-    payment_stage: str = "OTHER"
+    mode: PaymentModeLiteral = "CASH"
+    payment_stage: PaymentStageLiteral = "OTHER"
     reference_note: str | None = None
     overpayment_reason: str | None = None
 
@@ -88,8 +92,8 @@ class PaymentResponse(BaseModel):
     id: uuid.UUID
     booking_id: uuid.UUID
     amount: Decimal
-    mode: str
-    payment_stage: str
+    mode: PaymentModeLiteral
+    payment_stage: PaymentStageLiteral
     reference_note: str | None = None
     is_reversal: bool
     reverses_payment_id: uuid.UUID | None = None

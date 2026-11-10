@@ -99,8 +99,8 @@ def _payment_response(row: Payment) -> PaymentResponse:
         id=row.id,
         booking_id=row.booking_id,
         amount=row.amount,
-        mode=row.mode,
-        payment_stage=row.payment_stage,
+        mode=row.mode,  # type: ignore[arg-type]
+        payment_stage=row.payment_stage,  # type: ignore[arg-type]
         reference_note=row.reference_note,
         is_reversal=row.is_reversal,
         reverses_payment_id=row.reverses_payment_id,
@@ -362,7 +362,12 @@ def get_receipt(
     )
 
 
-@router.get("/{booking_id}/receipt/download")
+@router.get(
+    "/{booking_id}/receipt/download",
+    responses={
+        200: {"content": {"application/pdf": {"schema": {"type": "string", "format": "binary"}}}}
+    },
+)
 def download_receipt(
     booking_id: uuid.UUID,
     request: Request,
