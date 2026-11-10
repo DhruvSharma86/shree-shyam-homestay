@@ -46,6 +46,10 @@ class RoomUnavailableError(ValueError):
     """Raised when the room is inactive or under maintenance."""
 
 
+class OccupancyExceededError(ValueError):
+    """Raised when a booking requests more guests than the room allows."""
+
+
 class GuestInactiveError(ValueError):
     """Raised when the guest is missing or deactivated."""
 
@@ -194,6 +198,11 @@ def create_booking(
         raise ValueError("Room not found.")
     if not room.is_active or room.operational_status != RoomOperationalStatus.AVAILABLE:
         raise RoomUnavailableError("Room is inactive or under maintenance.")
+    if number_of_guests > room.maximum_occupancy:
+        raise OccupancyExceededError(
+            f"Room {room.room_number} accommodates at most {room.maximum_occupancy} guest(s); "
+            f"requested {number_of_guests}."
+        )
     if source not in (BookingSource.PHONE, BookingSource.WALK_IN):
         raise ValueError("source must be PHONE or WALK_IN.")
     overlap = _active_overlap(
@@ -271,6 +280,14 @@ def update_booking(
         raise ValueError("Room not found.")
     if not room.is_active or room.operational_status != RoomOperationalStatus.AVAILABLE:
         raise RoomUnavailableError("Room is inactive or under maintenance.")
+    resulting_guests = (
+        number_of_guests if number_of_guests is not None else booking.number_of_guests
+    )
+    if resulting_guests > room.maximum_occupancy:
+        raise OccupancyExceededError(
+            f"Room {room.room_number} accommodates at most {room.maximum_occupancy} guest(s); "
+            f"requested {resulting_guests}."
+        )
     overlap = _active_overlap(
         db, room_id=new_room_id, check_in=new_in, check_out=new_out, exclude_id=booking.id
     )

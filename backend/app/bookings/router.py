@@ -25,6 +25,7 @@ from app.bookings.schemas import (
 from app.bookings.service import (
     BookingOverlapError,
     GuestInactiveError,
+    OccupancyExceededError,
     RateUnavailableError,
     RoomUnavailableError,
     cancel_booking,
@@ -75,6 +76,8 @@ def _map_service_error(exc: Exception) -> ApiError:
         return ApiError(409, "CONFLICT", str(exc))
     if isinstance(exc, RoomUnavailableError):
         return ApiError(422, "VALIDATION_ERROR", str(exc))
+    if isinstance(exc, OccupancyExceededError):
+        return ApiError(422, "VALIDATION_ERROR", str(exc))
     if isinstance(exc, GuestInactiveError):
         return ApiError(422, "VALIDATION_ERROR", str(exc))
     if isinstance(exc, RateUnavailableError):
@@ -89,6 +92,7 @@ BOOKING_ERRORS = (
     RoomUnavailableError,
     GuestInactiveError,
     RateUnavailableError,
+    OccupancyExceededError,
     ValueError,
 )
 
