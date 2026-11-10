@@ -60,9 +60,9 @@ export const taxSchema = z.object({
 });
 export const restaurantSchema = z.object({
   name: z.string().min(1, 'Name is required'),
-  description: z.string().optional(),
-  contact_number: z.string().max(24).optional(),
-  opening_hours: z.string().optional(),
+  description: z.string().nullable().optional(),
+  contact_number: z.string().max(24).nullable().optional(),
+  opening_hours: z.string().nullable().optional(),
   is_active: z.boolean(),
 });
 export const menuCategorySchema = z.object({

@@ -145,6 +145,30 @@ describe('bookings page roles', () => {
     expect(screen.queryByText('Rotate link (ADMIN)')).not.toBeInTheDocument();
   });
 
+  it('generated guest link uses the frontend origin and /guest/ path (no API prefix)', async () => {
+    setRole('rec1', 'RECEPTIONIST', ['bookings.read', 'bookings.checkin', 'billing.payments.write']);
+    mocks.list.mockResolvedValue(LIST);
+    mocks.get.mockResolvedValue(DETAIL);
+    mocks.recordPayment.mockResolvedValue({});
+    mocks.checkIn.mockResolvedValue({ booking_id: 'b1', booking_ref: 'SSH-AAA', status: 'CHECKED_IN', checked_in_at: 'now', portal_access_token: 'SECRET-REC' });
+    const copy = vi.fn();
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText: copy }, configurable: true });
+    // jsdom origin
+    Object.defineProperty(window, 'location', { value: { origin: 'http://localhost:3000' }, writable: true, configurable: true });
+    wrap();
+    await waitFor(() => expect(screen.getByText('SSH-AAA')).toBeInTheDocument());
+    screen.getByText('Open').click();
+    await waitFor(() => expect(screen.getByText(/Check in & issue guest link/)).toBeInTheDocument());
+    fireEvent.click(screen.getByText('Check in & issue guest link'));
+    await waitFor(() => expect(screen.getByText(/SECRET-REC/)).toBeInTheDocument());
+    const linkText = screen.getByText(/\/guest\/SECRET-REC/).textContent ?? '';
+    expect(linkText).toContain('http://localhost:3000/guest/SECRET-REC');
+    expect(linkText).not.toContain('/api/v1/');
+    expect(linkText).not.toContain('localhost:8000');
+    fireEvent.click(screen.getByText('Copy link'));
+    await waitFor(() => expect(copy).toHaveBeenCalledWith('http://localhost:3000/guest/SECRET-REC'));
+  });
+
   it('admin shell shows full navigation', () => {
     setRole('admin1', 'ADMIN', ['users.manage']);
     render(

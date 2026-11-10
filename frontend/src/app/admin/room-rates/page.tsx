@@ -17,7 +17,8 @@ export default function RatesPage() {
 
   const create = useMutation({
     mutationFn: (v: unknown) => ratesApi.create(v),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['rates'] }); reset(); },
+    onMutate: () => setErr(''),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['rates'] }); reset(); setErr(''); },
     onError: (e) => setErr(apiErrorMessage(e)),
   });
 

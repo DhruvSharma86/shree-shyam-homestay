@@ -14,14 +14,14 @@ export default function RestaurantPage() {
   const q = useQuery({ queryKey: ['restaurant'], queryFn: () => restaurantApi.get() });
   const [err, setErr] = useState('');
   const [ok, setOk] = useState('');
-  const { register, handleSubmit, reset } = useForm({ resolver: zodResolver(restaurantSchema) });
+  const { register, handleSubmit, reset, formState: { errors } } = useForm({ resolver: zodResolver(restaurantSchema) });
 
   useEffect(() => { if (q.data) reset(q.data as never); }, [q.data, reset]);
 
   const save = useMutation({
     mutationFn: (v: unknown) => restaurantApi.patch(v),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['restaurant'] }); setOk('Saved.'); },
-    onError: (e) => setErr(apiErrorMessage(e)),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['restaurant'] }); setErr(''); setOk('Saved.'); },
+    onError: (e) => { setOk(''); setErr(apiErrorMessage(e)); },
   });
 
   if (q.isLoading) return <Spinner />;
@@ -30,10 +30,10 @@ export default function RestaurantPage() {
       <h1 className="text-2xl font-semibold tracking-tight">Restaurant</h1>
       <Card className="mt-4 max-w-xl">
         <form onSubmit={handleSubmit((v) => save.mutate(v))} className="space-y-3">
-          <Field label="Name"><Input {...register('name')} /></Field>
-          <Field label="Description"><Input {...register('description')} /></Field>
-          <Field label="Contact number"><Input {...register('contact_number')} /></Field>
-          <Field label="Opening hours"><Input {...register('opening_hours')} /></Field>
+          <Field label="Name" error={errors.name?.message}><Input {...register('name')} /></Field>
+          <Field label="Description" error={errors.description?.message}><Input {...register('description')} /></Field>
+          <Field label="Contact number" error={errors.contact_number?.message}><Input {...register('contact_number')} /></Field>
+          <Field label="Opening hours" error={errors.opening_hours?.message}><Input {...register('opening_hours')} /></Field>
           <label className="flex items-center gap-2 text-sm"><input type="checkbox" {...register('is_active')} /> Active</label>
           <Button type="submit" disabled={save.isPending}>Save</Button>
           {ok ? <p role="status" className="text-sm text-green-700">{ok}</p> : null}

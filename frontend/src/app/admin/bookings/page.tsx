@@ -6,8 +6,12 @@ import { apiErrorMessage, mutationErrorMessage } from '@/lib/api';
 import { useAuthStore } from '@/stores/auth';
 import { Button, Card, Empty, Err, Field, Input, RetryButton, Spinner } from '@/components/ui/primitives';
 
-const BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:8000';
-const PREFIX = process.env.NEXT_PUBLIC_API_V1 ?? '/api/v1';
+const guestFrontendOrigin = () =>
+  typeof window !== 'undefined' ? window.location.origin : '';
+
+function guestLink(token: string): string {
+  return `${guestFrontendOrigin()}/guest/${token}`;
+}
 
 export default function BookingsPage() {
   const qc = useQueryClient();
@@ -132,12 +136,12 @@ export default function BookingsPage() {
                 <div className="rounded-md border border-amber-300 bg-amber-50 p-3" role="status">
                   <p className="text-sm font-medium">Share this link with the guest (shown once — it will not appear again):</p>
                   <p className="mt-1 break-all text-sm">
-                    {`${BASE}${PREFIX}/guest/${linkToken}`}
+                    {guestLink(linkToken)}
                   </p>
                   <div className="mt-2 flex gap-2">
                     <Button
                       type="button"
-                      onClick={() => { void navigator.clipboard?.writeText(`${BASE}${PREFIX}/guest/${linkToken}`); setCopied(true); }}
+                      onClick={() => { void navigator.clipboard?.writeText(guestLink(linkToken)); setCopied(true); }}
                     >
                       {copied ? 'Copied' : 'Copy link'}
                     </Button>

@@ -18,7 +18,8 @@ export default function RoomsPage() {
 
   const create = useMutation({
     mutationFn: (v: unknown) => roomsApi.create(v),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['rooms'] }); reset(); },
+    onMutate: () => setErr(''),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['rooms'] }); reset(); setErr(''); },
     onError: (e) => setErr(apiErrorMessage(e)),
   });
   const patch = useMutation({
@@ -29,7 +30,11 @@ export default function RoomsPage() {
 
   if (rooms.isLoading || types.isLoading) return <Spinner />;
   const typeName = (id: string) => (types.data ?? []).find((t) => t.id === id)?.name ?? id.slice(0, 8);
-  const rows = (rooms.data ?? []).filter((r) => !filter || r.operational_status === filter);
+  const rows = (rooms.data ?? []).filter((r) => {
+    if (!filter) return true;
+    if (filter === 'INACTIVE') return r.is_active === false;
+    return r.is_active === true && r.operational_status === filter;
+  });
 
   return (
     <div>
