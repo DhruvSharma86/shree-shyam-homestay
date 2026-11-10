@@ -17,6 +17,8 @@ export const tourismApi = {
 export const bookingsApi = {
   list: (page = 1, page_size = 50) => get<BookingList>(`/bookings?page=${page}&page_size=${page_size}`),
   get: (id: string) => get<BookingDetail>(`/bookings/${id}`),
+  create: (b: unknown) => post<BookingDetail>('/bookings', b),
+  availability: (check_in: string, check_out: string) => get<{ room_id: string; available: boolean; check_in_date: string; check_out_date: string }[]>(`/bookings/availability?check_in=${check_in}&check_out=${check_out}`),
   recordCheckInPayment: (id: string, b: unknown) => post<unknown>(`/bookings/${id}/payments`, b),
   checkIn: (id: string) => post<CheckInResult>(`/bookings/${id}/check-in`, {}),
   receipt: (id: string) => get<{ receipt_ref: string; kind: string; content_hash: string }>(`/bookings/${id}/receipt`),

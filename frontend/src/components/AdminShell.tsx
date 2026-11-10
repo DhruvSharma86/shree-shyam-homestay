@@ -6,6 +6,7 @@ import { logout } from '@/services/auth';
 
 const STAFF_NAV = [
   ['Dashboard', '/admin/dashboard'],
+  ['Guests', '/admin/guests'],
   ['Bookings', '/admin/bookings'],
 ] as const;
 
