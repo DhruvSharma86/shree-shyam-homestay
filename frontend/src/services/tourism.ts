@@ -1,4 +1,14 @@
-import type { BookingDetail, BookingList, CheckInResult, LocalInfoAdmin, TourismPackageAdmin } from '@/types';
+import type {
+  BookingDetail,
+  BookingList,
+  CheckInResult,
+  FolioEntryResponse,
+  FolioResponse,
+  LocalInfoAdmin,
+  PaymentListResponse,
+  PaymentResponse,
+  TourismPackageAdmin,
+} from '@/types';
 import { api } from '@/lib/api';
 
 const get = async <T>(p: string) => (await api.get<T>(p)).data;
@@ -25,6 +35,18 @@ export const bookingsApi = {
   rotatePortal: (id: string) =>
     post<{ booking_id: string; portal_access_token: string }>(`/guest-portal/admin-rotate/${id}`, {}),
   revokePortal: (id: string) => post<unknown>(`/guest-portal/admin-revoke/${id}`, {}),
+};
+
+export const folioApi = {
+  get: (booking_id: string) => get<FolioResponse>(`/bookings/${booking_id}/folio`),
+  createCharge: (booking_id: string, b: unknown) => post<FolioEntryResponse>(`/bookings/${booking_id}/folio/charges`, b),
+  createDiscount: (booking_id: string, b: unknown) => post<FolioEntryResponse>(`/bookings/${booking_id}/folio/discounts`, b),
+  createReversal: (booking_id: string, b: unknown) => post<FolioEntryResponse>(`/bookings/${booking_id}/folio/reversals`, b),
+};
+
+export const paymentsApi = {
+  list: (booking_id: string, page = 1, page_size = 50) => get<PaymentListResponse>(`/bookings/${booking_id}/payments?page=${page}&page_size=${page_size}`),
+  create: (booking_id: string, b: unknown) => post<PaymentResponse>(`/bookings/${booking_id}/payments`, b),
 };
 
 export async function downloadStaffReceipt(bookingId: string): Promise<Blob> {

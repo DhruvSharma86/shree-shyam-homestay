@@ -241,7 +241,10 @@ export default function BookingsPage() {
             <Empty title="Booking not found" />
           ) : (
             <div className="space-y-3">
-              <h2 className="font-medium">{detail.data.booking_ref} · {detail.data.status}</h2>
+              <div className="flex items-center justify-between">
+                <h2 className="font-medium">{detail.data.booking_ref} · {detail.data.status}</h2>
+                <a href={`/admin/bookings/${detail.data.id}/folio`} className="text-sm text-stone-600 hover:text-stone-900 underline">View Folio</a>
+              </div>
               <p className="text-sm text-stone-600">
                 {detail.data.check_in_date} → {detail.data.check_out_date} ({detail.data.nights} nights) · {detail.data.number_of_guests} guest(s)
               </p>

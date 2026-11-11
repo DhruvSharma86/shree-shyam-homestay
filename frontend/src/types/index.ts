@@ -25,4 +25,63 @@ export interface MenuItem { id: string; name: string; description: string | null
 export interface CabProvider { id: string; company_name: string; description: string | null; contact_number: string; website_url: string | null; service_description: string | null; is_active: boolean; display_order: number; }
 export interface ApiError { error: { code: string; message: string; details?: unknown } }
 export interface Guest { id: string; full_name: string; phone: string; email: string | null; address: string | null; notes: string | null; is_active: boolean; created_at: string; updated_at: string; }
+export interface FolioEntryResponse {
+  id: string;
+  booking_id: string;
+  entry_type: string;
+  description: string;
+  quantity: number;
+  unit_amount: number | null;
+  amount: number;
+  is_initial: boolean;
+  reverses_entry_id: string | null;
+  created_at: string;
+}
+export interface FolioResponse {
+  booking_id: string;
+  booking_ref: string;
+  booking_status: string;
+  entries: FolioEntryResponse[];
+  total_charges: number;
+  total_paid: number;
+  balance_due: number;
+  payment_count: number;
+}
+export interface ChargeCreate {
+  description: string;
+  quantity: number;
+  unit_amount: number;
+}
+export interface DiscountCreate {
+  amount: number;
+  reason: string;
+}
+export interface ReversalCreate {
+  entry_id: string;
+  reason: string;
+}
+export interface PaymentResponse {
+  id: string;
+  booking_id: string;
+  amount: number;
+  mode: 'CASH' | 'UPI' | 'CARD_POS';
+  payment_stage: 'ADVANCE' | 'CHECK_IN' | 'CHECKOUT' | 'OTHER';
+  reference_note: string | null;
+  is_reversal: boolean;
+  reverses_payment_id: string | null;
+  received_at: string;
+}
+export interface PaymentListResponse {
+  items: PaymentResponse[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+export interface ReceiptResponse {
+  receipt_id: string;
+  booking_id: string;
+  receipt_ref: string;
+  kind: string;
+  content_hash: string;
+}
 export * from './guestPortal';
