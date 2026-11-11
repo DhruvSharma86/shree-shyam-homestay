@@ -1,6 +1,7 @@
 """Audit log tests — security-relevant actions are recorded (safely)."""
 
-from datetime import datetime, timezone, timedelta
+from datetime import UTC, datetime, timedelta
+
 from sqlalchemy import select
 
 from app.models.audit import AuditLog
@@ -100,11 +101,12 @@ def _audit_row(db_session, action: str, resource_type: str = "booking",
                resource_id: str = "b1", actor_user_id=None, metadata=None,
                ip_address: str = "127.0.0.1", created_at=None) -> None:
     """Insert a raw audit row via the ORM (bypasses write_audit for test speed)."""
-    from app.models.audit import AuditLog
     import uuid
 
+    from app.models.audit import AuditLog
+
     if created_at is None:
-        created_at = datetime.now(timezone.utc)
+        created_at = datetime.now(UTC)
 
     row = AuditLog(
         id=uuid.uuid4(),
@@ -166,7 +168,7 @@ def test_unauthenticated_cannot_read_audit_logs(db_session) -> None:
 def test_audit_logs_ordered_newest_first(db_session) -> None:
     """Records are returned in reverse chronological order."""
     client = _admin_client(db_session)
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     _audit_row(db_session, "ACTION_OLD", "booking", "b1",
                created_at=now - timedelta(hours=2))
     _audit_row(db_session, "ACTION_NEW", "booking", "b2",
@@ -217,8 +219,8 @@ def test_audit_logs_max_page_size_enforced(db_session) -> None:
 def test_audit_logs_date_filter(db_session) -> None:
     """from_date/to_date filter records by created_at."""
     client = _admin_client(db_session)
-    yesterday = datetime.now(timezone.utc) - timedelta(days=1)
-    today = datetime.now(timezone.utc)
+    yesterday = datetime.now(UTC) - timedelta(days=1)
+    today = datetime.now(UTC)
 
     _audit_row(db_session, "ACTION_YESTERDAY", "booking", "b1", created_at=yesterday)
     _audit_row(db_session, "ACTION_TODAY", "booking", "b2", created_at=today)
@@ -431,7 +433,9 @@ def test_tax_settings_creation_audit_metadata(db_session) -> None:
     )
     assert resp.status_code == 201
 
-    rows = db_session.scalars(select(AuditLog).where(AuditLog.action == "TAX_SETTINGS_CREATED")).all()
+    rows = db_session.scalars(
+        select(AuditLog).where(AuditLog.action == "TAX_SETTINGS_CREATED")
+    ).all()
     assert len(rows) == 1
     row = rows[0]
     assert row.resource_type == "tax_settings"
