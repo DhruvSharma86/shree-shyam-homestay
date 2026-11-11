@@ -34,12 +34,12 @@ def _validate_date_range(from_date: date | None, to_date: date | None) -> None:
     dependencies=[Depends(require_permission(Permission.AUDIT_READ))],
 )
 def list_audit_logs(
-    from_date: date | None = Query(default=None, description="Filter records from this date (inclusive)."),
-    to_date: date | None = Query(default=None, description="Filter records up to this date (inclusive)."),
-    actor: str | None = Query(default=None, description="Filter by actor username (case-insensitive substring)."),
-    action: str | None = Query(default=None, description="Filter by action name (case-insensitive substring)."),
-    resource_type: str | None = Query(default=None, description="Filter by resource type (case-insensitive substring)."),
-    resource_id: str | None = Query(default=None, description="Filter by resource ID (case-insensitive substring)."),
+    from_date: date | None = Query(default=None, description="Filter from this date."),
+    to_date: date | None = Query(default=None, description="Filter up to this date."),
+    actor: str | None = Query(default=None, description="Filter by actor username."),
+    action: str | None = Query(default=None, description="Filter by action name."),
+    resource_type: str | None = Query(default=None, description="Filter by resource type."),
+    resource_id: str | None = Query(default=None, description="Filter by resource ID."),
     page: int = Query(default=1, ge=1, description="Page number (1-based)."),
     page_size: int = Query(default=50, ge=1, le=100, description="Records per page (max 100)."),
     db: DBSession = Depends(get_db),
