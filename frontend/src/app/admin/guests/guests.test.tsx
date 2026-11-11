@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import GuestsPage from '@/app/admin/guests/page';
+import { useAuthStore } from '@/stores/auth';
 
 vi.mock('next/navigation', () => ({ useRouter: () => ({ replace: vi.fn() }), usePathname: () => '/admin/guests' }));
 
@@ -11,22 +12,35 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock('@/services/guests', () => ({
-  guestsApi: { list: (...a: unknown[]) => mocks.list(...a), create: (b: unknown) => mocks.create(b), get: vi.fn(), update: vi.fn(), deactivate: vi.fn() },
+  guestsApi: {
+    list: (...a: unknown[]) => mocks.list(...a),
+    create: (b: unknown) => mocks.create(b),
+    get: vi.fn(),
+    update: vi.fn(),
+    deactivate: vi.fn(),
+  },
 }));
+
+const GUEST = { id: 'g1', full_name: 'Alice Guest', phone: '+919000000000' };
+
+function setRole(username: string, role: 'ADMIN' | 'RECEPTIONIST', permissions: string[]) {
+  useAuthStore.setState({
+    me: { user: { username, role, full_name: 'U' } as never, permissions } as never,
+    loading: false,
+  });
+}
 
 function wrap() {
   return render(
-    <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
-      <GuestsPage />
-    </QueryClientProvider>,
+    <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><GuestsPage /></QueryClientProvider>,
   );
 }
 
 describe('guests page', () => {
   it('loads and renders guest list', async () => {
-    mocks.list.mockResolvedValue({ items: [{ id: 'g1', full_name: 'Alice', phone: '+919000000000', email: null, address: null, notes: null, is_active: true, created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' }], total: 1, page: 1, page_size: 20 });
+    mocks.list.mockResolvedValue({ items: [{ id: 'g1', full_name: 'Alice Guest', phone: '+919000000000', email: null, address: null, notes: null, is_active: true, created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' }], total: 1, page: 1, page_size: 20 });
     wrap();
-    await waitFor(() => expect(screen.getByText('Alice')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('Alice Guest')).toBeInTheDocument());
     expect(screen.getByText('+919000000000')).toBeInTheDocument();
   });
 
@@ -85,5 +99,13 @@ describe('guests page', () => {
     fireEvent.change(searchInput, { target: { value: 'zzz' } });
     fireEvent.click(screen.getByRole('button', { name: /Search/i }));
     await waitFor(() => expect(mocks.list).toHaveBeenCalledWith('zzz', 1, 20));
+  });
+
+  it('receptionist can access guest page', async () => {
+    mocks.list.mockResolvedValue({ items: [GUEST], total: 1, page: 1, page_size: 20 });
+    setRole('rec1', 'RECEPTIONIST', ['guests.read', 'guests.write']);
+    wrap();
+    await waitFor(() => expect(screen.getByText('Alice Guest')).toBeInTheDocument());
+    expect(screen.getByText('+919000000000')).toBeInTheDocument();
   });
 });

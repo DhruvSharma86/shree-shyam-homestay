@@ -11,13 +11,16 @@ export function useSession(): { me: MeResponse | null; loading: boolean } {
 
   useEffect(() => {
     let cancelled = false;
-    if (me) { setLoading(false); return; }
-    setLoading(true);
+    if (me) {
+      if (loading) setLoading(false);
+      return;
+    }
+    if (!loading) setLoading(true);
     fetchMe().then((m) => { if (!cancelled) setMe(m); })
       .catch(() => { if (!cancelled) router.replace('/login'); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [me]);
+  }, [me, router, setLoading, setMe, loading]);
 
   return { me, loading };
 }

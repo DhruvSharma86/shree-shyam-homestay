@@ -164,7 +164,7 @@ describe('booking creation', () => {
     ]);
     wrap();
     openCreate();
-    selectGuest();
+    await selectGuest();
     const ci = screen.getByLabelText('Check-in date');
     const co = screen.getByLabelText('Check-out date');
     fireEvent.change(ci, { target: { value: '2026-11-12' } });
@@ -184,7 +184,7 @@ describe('booking creation', () => {
     bookings.get.mockResolvedValue(newBooking);
     wrap();
     openCreate();
-    selectGuest();
+    await selectGuest();
     const ci = screen.getByLabelText('Check-in date');
     const co = screen.getByLabelText('Check-out date');
     fireEvent.change(ci, { target: { value: '2026-11-12' } });
@@ -212,17 +212,17 @@ describe('booking creation', () => {
     }));
     wrap();
     openCreate();
-    selectGuest();
+    await selectGuest();
     const ci = screen.getByLabelText('Check-in date');
     const co = screen.getByLabelText('Check-out date');
     fireEvent.change(ci, { target: { value: '2026-11-12' } });
     fireEvent.change(co, { target: { value: '2026-11-14' } });
     fireEvent.click(screen.getByRole('button', { name: /Check availability/i }));
-    await waitFor(() => expect(screen.getByText('Room 101 (Deluxe) \u2014 max 2 guests')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('Room 101 (Deluxe) — max 2 guests')).toBeInTheDocument());
     fireEvent.click(screen.getByText(/Room 101/));
     const guestsInput = screen.getByLabelText('Number of guests');
     fireEvent.change(guestsInput, { target: { value: '4' } });
     fireEvent.click(screen.getByRole('button', { name: /Create booking/ }));
-    await waitFor(() => expect(screen.getAllByText(/accommodates at most 2 guest\(s\); requested 4/).length).toBeGreaterThan(0));
+    await waitFor(() => screen.getAllByText(/accommodates at most 2 guest\(s\); requested 4/).length > 0);
   });
 });

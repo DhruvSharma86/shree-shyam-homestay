@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import { RequireAdmin } from '@/components/RequireAdmin';
 import { useAuthStore } from '@/stores/auth';
 
@@ -27,5 +27,20 @@ describe('RequireAdmin', () => {
     });
     render(<RequireAdmin><p>secret</p></RequireAdmin>);
     expect(screen.getByText('secret')).toBeInTheDocument();
+  });
+
+  it('blocks receptionists after ADMIN session', async () => {
+    useAuthStore.setState({
+      me: { user: { username: 'admin1', role: 'ADMIN', full_name: 'A' } as never, permissions: ['users.manage'] },
+      loading: false,
+    });
+    render(<RequireAdmin><p>secret</p></RequireAdmin>);
+    expect(screen.getByText('secret')).toBeInTheDocument();
+
+    useAuthStore.setState({
+      me: { user: { username: 'rec1', role: 'RECEPTIONIST', full_name: 'R' } as never, permissions: ['profile.read'] },
+      loading: false,
+    });
+    await waitFor(() => expect(screen.getByText('Access restricted')).toBeInTheDocument());
   });
 });
