@@ -10,8 +10,8 @@ jobs:
     name: Lint, typecheck, SQLite tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4.4.2
-      - uses: actions/setup-python@v5.5.0
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
       - name: Reject tracked database artifacts
@@ -52,8 +52,8 @@ jobs:
       DATABASE_URL: postgresql+psycopg://hotel_app:ci-only-test-password@localhost:5432/shree_shyam
       REQUIRE_POSTGRES: "1"
     steps:
-      - uses: actions/checkout@v4.4.2
-      - uses: actions/setup-python@v5.5.0
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
       - name: Install backend (dev extras)
