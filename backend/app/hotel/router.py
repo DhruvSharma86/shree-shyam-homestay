@@ -187,13 +187,17 @@ def create_room_type_route(
     """Create a room category (ADMIN only)."""
     verify_csrf(request)
     try:
-        row = create_room_type(db, name=payload.name, actor_user_id=actor.id)
+        row = create_room_type(
+            db,
+            name=payload.name,
+            description=payload.description,
+            maximum_occupancy=payload.maximum_occupancy,
+            amenities=payload.amenities,
+            display_order=payload.display_order,
+            actor_user_id=actor.id,
+        )
     except ValueError as exc:
         raise ApiError(409, "CONFLICT", str(exc)) from None
-    row.description = payload.description
-    row.maximum_occupancy = payload.maximum_occupancy
-    row.amenities = payload.amenities
-    row.display_order = payload.display_order
     db.commit()
     db.refresh(row)
     return _serialize_room_type(row)
@@ -283,15 +287,15 @@ def create_room_route(
             db,
             room_number=payload.room_number,
             room_type_id=payload.room_type_id,
+            floor=payload.floor,
+            description=payload.description,
+            maximum_occupancy=payload.maximum_occupancy,
             actor_user_id=actor.id,
         )
     except ValueError as exc:
         raise ApiError(409, "CONFLICT", str(exc)) from None
     except LookupError as exc:
         raise ApiError(404, "NOT_FOUND", str(exc)) from None
-    row.floor = payload.floor
-    row.description = payload.description
-    row.maximum_occupancy = payload.maximum_occupancy
     db.commit()
     db.refresh(row)
     return _serialize_room(row)

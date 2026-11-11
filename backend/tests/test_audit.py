@@ -337,3 +337,146 @@ def test_audit_logs_no_write_endpoints(db_session) -> None:
 
     resp = client.delete("/api/v1/audit-logs/00000000-0000-0000-0000-000000000000")
     assert resp.status_code == 404
+
+
+def test_room_type_creation_audit_metadata(db_session) -> None:
+    """Room category creation writes complete metadata (no PII)."""
+    client = _admin_client(db_session)
+
+    resp = client.post(
+        "/api/v1/admin/room-types",
+        json={
+            "name": "Deluxe",
+            "description": "Spacious room with garden view",
+            "maximum_occupancy": 4,
+            "amenities": "Wi-Fi, TV, minibar",
+            "display_order": 1,
+        },
+        headers=csrf_headers(client),
+    )
+    assert resp.status_code == 201
+
+    rows = db_session.scalars(select(AuditLog).where(AuditLog.action == "ROOM_TYPE_CREATED")).all()
+    assert len(rows) == 1
+    row = rows[0]
+    assert row.resource_type == "room_type"
+    meta = row.metadata_json or {}
+    assert meta["name"] == "Deluxe"
+    assert meta["description"] == "Spacious room with garden view"
+    assert meta["maximum_occupancy"] == 4
+    assert meta["amenities"] == "Wi-Fi, TV, minibar"
+    assert meta["display_order"] == 1
+
+
+def test_room_creation_audit_metadata(db_session) -> None:
+    """Room creation writes complete metadata (no PII)."""
+    client = _admin_client(db_session)
+
+    # First create a room type
+    rt = client.post(
+        "/api/v1/admin/room-types",
+        json={
+            "name": "Standard",
+            "description": "Standard room",
+            "maximum_occupancy": 2,
+            "amenities": None,
+            "display_order": 0,
+        },
+        headers=csrf_headers(client),
+    )
+    assert rt.status_code == 201
+    room_type_id = rt.json()["id"]
+
+    # Then create a room
+    resp = client.post(
+        "/api/v1/admin/rooms",
+        json={
+            "room_number": "101",
+            "room_type_id": str(room_type_id),
+            "floor": 1,
+            "description": "First floor standard room",
+            "maximum_occupancy": 2,
+        },
+        headers=csrf_headers(client),
+    )
+    assert resp.status_code == 201
+
+    rows = db_session.scalars(select(AuditLog).where(AuditLog.action == "ROOM_CREATED")).all()
+    assert len(rows) == 1
+    row = rows[0]
+    assert row.resource_type == "room"
+    meta = row.metadata_json or {}
+    assert meta["room_number"] == "101"
+    assert meta["floor"] == 1
+    assert meta["description"] == "First floor standard room"
+    assert meta["maximum_occupancy"] == 2
+
+
+def test_tax_settings_creation_audit_metadata(db_session) -> None:
+    """Tax settings creation writes complete metadata (no PII)."""
+    client = _admin_client(db_session)
+
+    resp = client.post(
+        "/api/v1/admin/tax-settings",
+        json={
+            "registration_status": "REGISTERED",
+            "tax_type": "GST",
+            "tax_rate": "18.00",
+            "pricing_mode": "EXCLUSIVE",
+            "valid_from": "2026-01-01",
+            "valid_until": None,
+            "notes": None,
+        },
+        headers=csrf_headers(client),
+    )
+    assert resp.status_code == 201
+
+    rows = db_session.scalars(select(AuditLog).where(AuditLog.action == "TAX_SETTINGS_CREATED")).all()
+    assert len(rows) == 1
+    row = rows[0]
+    assert row.resource_type == "tax_settings"
+    meta = row.metadata_json or {}
+    assert meta["registration_status"] == "REGISTERED"
+    assert meta["tax_type"] == "GST"
+    assert meta["tax_rate"] == "18.00"
+    assert meta["pricing_mode"] == "EXCLUSIVE"
+    assert meta["valid_from"] == "2026-01-01"
+    assert meta["valid_until"] is None
+
+
+def test_duplicate_room_type_does_not_leak_audit_entry(db_session) -> None:
+    """Failed room type creation (duplicate name) leaves no audit entry."""
+    client = _admin_client(db_session)
+
+    # Create first room type
+    client.post(
+        "/api/v1/admin/room-types",
+        json={
+            "name": "Deluxe",
+            "description": "First deluxe",
+            "maximum_occupancy": 2,
+            "amenities": None,
+            "display_order": 0,
+        },
+        headers=csrf_headers(client),
+    )
+
+    # Attempt duplicate — should fail
+    resp = client.post(
+        "/api/v1/admin/room-types",
+        json={
+            "name": "Deluxe",
+            "description": "Duplicate",
+            "maximum_occupancy": 3,
+            "amenities": None,
+            "display_order": 1,
+        },
+        headers=csrf_headers(client),
+    )
+    assert resp.status_code == 409
+
+    # Only one ROOM_TYPE_CREATED audit entry should exist
+    rows = db_session.scalars(select(AuditLog).where(AuditLog.action == "ROOM_TYPE_CREATED")).all()
+    assert len(rows) == 1
+    assert rows[0].metadata_json["name"] == "Deluxe"
+    assert rows[0].metadata_json["description"] == "First deluxe"

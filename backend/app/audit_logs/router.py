@@ -8,14 +8,13 @@ Route: ``GET /api/v1/audit-logs``
 """
 
 from datetime import date
-from typing import Any
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session as DBSession
 
-from app.auth.dependencies import require_permission
-from app.audit_logs.schemas import AuditLogEntryResponse, AuditLogListResponse
+from app.audit_logs.schemas import AuditLogListResponse
 from app.audit_logs.service import list_audit_logs as _list_audit_logs
+from app.auth.dependencies import require_permission
 from app.core.db import get_db
 from app.core.errors import ApiError
 from app.core.permissions import Permission

@@ -156,7 +156,17 @@ def get_session_user(db: DBSession, token: str | None) -> tuple[User, SessionMod
 
 
 def revoke_session(db: DBSession, row: SessionModel, *, actor_user_id: uuid.UUID | None) -> None:
-    """Revoke (logout) a session. Idempotent."""
+    """Revoke (logout) a session. Idempotent.
+
+    This function commits the transaction independently of its caller.
+    It is invoked from ``login()`` to revoke any pre-existing session
+    before a new one is issued (session-fixation protection). Because the
+    revocation must persist even if the subsequent login fails, the
+    AUTH_LOGOUT audit row is committed here rather than being folded into
+    the login transaction. Consequently, an AUTH_LOGOUT audit event may
+    exist even when the following login attempt fails — this is by design,
+    not a defect.
+    """
     if row.revoked_at is None:
         row.revoked_at = _utcnow()
         write_audit(

@@ -15,11 +15,10 @@ from datetime import date, datetime, time
 from typing import Any
 
 from sqlalchemy import func, select
-from sqlalchemy.orm import Session as DBSession, joinedload
+from sqlalchemy.orm import Session as DBSession
 
 from app.models.audit import AuditLog
 from app.models.user import User
-
 
 # Metadata keys whose values are treated as secrets and redacted.
 # Matches are case-insensitive on the key name.

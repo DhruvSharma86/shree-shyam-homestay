@@ -14,6 +14,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 from app import models as _models  # noqa: F401  (registers ORM models on Base.metadata)
 from app.api.health import router as health_router
+from app.audit_logs.router import router as audit_logs_router
 from app.auth.router import router as auth_router
 from app.auth.users_router import router as users_router
 from app.billing.router import router as billing_router
@@ -26,7 +27,6 @@ from app.guests.router import router as guests_router
 from app.hotel.restaurant_router import router as restaurant_router
 from app.hotel.router import router as hotel_router
 from app.hotel.tourism_router import router as tourism_router
-from app.audit_logs.router import router as audit_logs_router
 from app.reports.router import router as reports_router
 
 

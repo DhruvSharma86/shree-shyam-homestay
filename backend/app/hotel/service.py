@@ -30,12 +30,27 @@ def get_or_create_hotel(db: DBSession) -> HotelInfo:
     return row
 
 
-def create_room_type(db: DBSession, *, name: str, actor_user_id: uuid.UUID) -> RoomType:
+def create_room_type(
+    db: DBSession,
+    *,
+    name: str,
+    description: str | None,
+    maximum_occupancy: int,
+    amenities: str | None,
+    display_order: int,
+    actor_user_id: uuid.UUID,
+) -> RoomType:
     """Create a room category. Raises ValueError on duplicate name."""
     existing = db.scalar(select(RoomType).where(RoomType.name == name))
     if existing is not None:
         raise ValueError("Room category name already exists.")
-    row = RoomType(name=name)
+    row = RoomType(
+        name=name,
+        description=description,
+        maximum_occupancy=maximum_occupancy,
+        amenities=amenities,
+        display_order=display_order,
+    )
     db.add(row)
     db.flush()
     write_audit(
@@ -44,7 +59,13 @@ def create_room_type(db: DBSession, *, name: str, actor_user_id: uuid.UUID) -> R
         resource_type="room_type",
         resource_id=str(row.id),
         actor_user_id=actor_user_id,
-        metadata={"name": name},
+        metadata={
+            "name": name,
+            "description": description,
+            "maximum_occupancy": maximum_occupancy,
+            "amenities": amenities,
+            "display_order": display_order,
+        },
     )
     return row
 
@@ -54,6 +75,9 @@ def create_room(
     *,
     room_number: str,
     room_type_id: uuid.UUID,
+    floor: int | None,
+    description: str | None,
+    maximum_occupancy: int,
     actor_user_id: uuid.UUID,
 ) -> Room:
     """Create a room. Raises ValueError on duplicate number or bad type."""
@@ -63,7 +87,13 @@ def create_room(
     existing = db.scalar(select(Room).where(Room.room_number == room_number))
     if existing is not None:
         raise ValueError("Room number already exists.")
-    row = Room(room_number=room_number, room_type_id=room_type_id)
+    row = Room(
+        room_number=room_number,
+        room_type_id=room_type_id,
+        floor=floor,
+        description=description,
+        maximum_occupancy=maximum_occupancy,
+    )
     db.add(row)
     db.flush()
     write_audit(
@@ -72,7 +102,12 @@ def create_room(
         resource_type="room",
         resource_id=str(row.id),
         actor_user_id=actor_user_id,
-        metadata={"room_number": room_number},
+        metadata={
+            "room_number": room_number,
+            "floor": floor,
+            "description": description,
+            "maximum_occupancy": maximum_occupancy,
+        },
     )
     return row
 
@@ -169,8 +204,12 @@ def create_tax_settings(
         resource_id=str(row.id),
         actor_user_id=actor_user_id,
         metadata={
+            "registration_status": registration_status,
             "tax_type": tax_type,
             "tax_rate": str(tax_rate) if tax_rate is not None else None,
+            "pricing_mode": pricing_mode,
+            "valid_from": valid_from.isoformat(),
+            "valid_until": valid_until.isoformat() if valid_until is not None else None,
         },
     )
     return row
