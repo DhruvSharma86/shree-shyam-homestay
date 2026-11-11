@@ -208,4 +208,25 @@ export interface OccupancyResponse {
   available_room_nights: number;
   occupancy_rate: number;
 }
+
+// Audit log types (backend-calculated, never computed in frontend)
+
+export interface AuditLogEntryResponse {
+  id: string;
+  actor_user_id: string | null;
+  actor_username: string | null;
+  action: string;
+  resource_type: string;
+  resource_id: string;
+  metadata: { [key: string]: unknown } | null;
+  ip_address: string | null;
+  created_at: string;
+}
+
+export interface AuditLogListResponse {
+  items: AuditLogEntryResponse[];
+  total: number;
+  page: number;
+  page_size: number;
+}
 export * from './guestPortal';
