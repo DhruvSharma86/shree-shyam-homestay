@@ -84,4 +84,128 @@ export interface ReceiptResponse {
   kind: string;
   content_hash: string;
 }
+
+// Report types (all backend-calculated, never computed in frontend)
+
+export interface FinancialSummaryResponse {
+  from_date: string | null;
+  to_date: string | null;
+  room_charges: number;
+  additional_charges: number;
+  discounts: number;
+  charge_reversals: number;
+  gross_charges: number;
+  net_payments: number;
+  outstanding: number;
+}
+
+export interface CollectionRow {
+  date: string;
+  method: string;
+  stage: string;
+  transactions: number;
+  original_total: number;
+  reversal_total: number;
+  net_total: number;
+}
+
+export interface CollectionReportResponse {
+  from_date: string | null;
+  to_date: string | null;
+  rows: CollectionRow[];
+  original_total: number;
+  reversal_total: number;
+  net_total: number;
+}
+
+export interface MethodRow {
+  method: string;
+  transactions: number;
+  original_total: number;
+  reversal_total: number;
+  net_total: number;
+}
+
+export interface MethodReportResponse {
+  from_date: string | null;
+  to_date: string | null;
+  rows: MethodRow[];
+  original_total: number;
+  reversal_total: number;
+  net_total: number;
+}
+
+export interface OutstandingRow {
+  booking_id: string;
+  booking_ref: string;
+  room_number: string;
+  status: string;
+  total_charges: number;
+  net_paid: number;
+  balance: number;
+}
+
+export interface OutstandingReportResponse {
+  snapshot: string;
+  rows: OutstandingRow[];
+  outstanding_total: number;
+  credit_total: number;
+  total: number;
+  page: number;
+  page_size: number;
+}
+
+export interface ReconciliationResponse {
+  from_date: string | null;
+  to_date: string | null;
+  charge_entries: number;
+  original_payments: number;
+  reversal_payments: number;
+  net_payments: number;
+  outstanding_in_period: number;
+  credit_in_period: number;
+  entry_count: number;
+  payment_count: number;
+  reversal_count: number;
+}
+
+export interface ReversalItem {
+  kind: string;
+  id: string;
+  booking_id: string;
+  booking_ref: string;
+  amount: number;
+  reason: string | null;
+  reverses_id: string;
+  created_at: string;
+}
+
+export interface ReversalsReportResponse {
+  from_date: string | null;
+  to_date: string | null;
+  payment_reversal_total: number;
+  charge_reversal_total: number;
+  items: ReversalItem[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
+export interface BookingsSummaryResponse {
+  from_date: string | null;
+  to_date: string | null;
+  total: number;
+  confirmed: number;
+  checked_in: number;
+  checked_out: number;
+  cancelled: number;
+}
+
+export interface OccupancyResponse {
+  from_date: string | null;
+  to_date: string | null;
+  occupied_room_nights: number;
+  available_room_nights: number;
+  occupancy_rate: number;
+}
 export * from './guestPortal';

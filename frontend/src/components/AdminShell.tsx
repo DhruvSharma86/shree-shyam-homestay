@@ -22,6 +22,7 @@ const ADMIN_NAV = [
   ['Tourism', '/admin/tourism'],
   ['Users', '/admin/users'],
   ['Audit logs', '/admin/audit-logs'],
+  ['Reports', '/admin/reports'],
 ] as const;
 
 export function AdminShell({ children }: { children: React.ReactNode }) {
