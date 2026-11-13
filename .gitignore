@@ -18,3 +18,11 @@ Git-Auto-Commit-Push.cmd
 *-journal
 *-wal
 *-shm
+
+# Desktop (Phase 6.4) — build outputs & staged runtimes are never committed.
+# The generated Windows installer is a local release artifact, not a repo file.
+desktop/node_modules/
+desktop/dist/
+desktop/.cache/
+backend/packaging/build/
+backend/packaging/dist/

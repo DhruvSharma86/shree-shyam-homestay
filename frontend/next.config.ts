@@ -2,6 +2,9 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   /* config options here */
+  // The Windows desktop application (docs/DESKTOP_APPLICATION.md) ships the
+  // standalone server (server.js) plus traced node_modules — do not remove.
+  output: "standalone",
   cacheComponents: true,
   partialPrefetching: true,
   turbopack: {

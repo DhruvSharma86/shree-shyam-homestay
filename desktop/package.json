@@ -1,0 +1,26 @@
+{
+  "name": "shree-shyam-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Shree Shyam Home Stay — Windows desktop application (Electron shell)",
+  "main": "main/main.js",
+  "license": "UNLICENSED",
+  "scripts": {
+    "dev": "electron .",
+    "test": "node --test test/",
+    "prepare:frontend": "node scripts/prepare-frontend.mjs",
+    "fetch:node": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/fetch-node-runtime.ps1",
+    "build:backend": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-backend.ps1",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder --win nsis",
+    "build:installer": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-installer.ps1"
+  },
+  "devDependencies": {
+    "electron": "^41.0.0",
+    "electron-builder": "^26.0.0"
+  },
+  "allowScripts": {
+    "electron@41.10.7": true,
+    "electron-winstaller@5.4.0": true
+  }
+}

@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:; connect-src 'none'; font-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Set up Shree Shyam Home Stay</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+    background: radial-gradient(1200px 700px at 50% 30%, #1c6b3c 0%, #14532d 55%, #0d3a1f 100%);
+    color: #fdf6e3; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 32px;
+  }
+  .card { width: min(460px, 100%); background: rgba(0,0,0,.32); border: 1px solid rgba(245,158,11,.35);
+    border-radius: 14px; padding: 28px 32px; box-shadow: 0 20px 60px rgba(0,0,0,.35); }
+  .tag { font-size: 11px; letter-spacing: 3px; text-transform: uppercase; color: #f5c86b; margin-bottom: 8px; }
+  h1 { font-size: 24px; margin-bottom: 6px; }
+  p.lede { font-size: 13px; color: rgba(253,246,227,.8); margin-bottom: 18px; line-height: 1.45; }
+  label { display: block; font-size: 12px; color: #ffe9b3; margin: 12px 0 6px; }
+  input { width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid rgba(253,246,227,.25);
+    background: rgba(255,255,255,.06); color: #fdf6e3; font-size: 14px; outline: none; }
+  input:focus { border-color: #f59e0b; box-shadow: 0 0 0 2px rgba(245,158,11,.25); }
+  .row { display: flex; gap: 12px; }
+  .row > div:first-child { flex: 1 1 auto; }
+  .row > div:last-child { flex: 0 0 110px; }
+  button { margin-top: 18px; width: 100%; padding: 12px; border: 0; border-radius: 8px; font-size: 15px; font-weight: 700;
+    background: linear-gradient(180deg,#fbbf24,#f59e0b); color: #3b2503; cursor: pointer; }
+  button:hover { filter: brightness(1.05); }
+  button:disabled { opacity: .6; cursor: wait; }
+  .error { display: none; margin-top: 12px; padding: 10px 12px; border-radius: 8px; font-size: 12px;
+    background: rgba(185,28,28,.35); border: 1px solid rgba(248,113,113,.5); color: #fecaca; }
+  .note { margin-top: 14px; font-size: 11px; color: rgba(253,246,227,.55); line-height: 1.5; }
+  code { background: rgba(255,255,255,.08); padding: 1px 5px; border-radius: 4px; }
+</style>
+</head>
+<body>
+  <form class="card" id="setup-form" autocomplete="off">
+    <div class="tag">First-time setup</div>
+    <h1>Connect your database</h1>
+    <p class="lede">Shree Shyam Home Stay stores its data in your local PostgreSQL server. Enter the connection details for the <strong>shree_shyam</strong> database. Your password is stored only on this computer, in <code>%APPDATA%\ShreeShyamHomeStay\config.env</code> — never inside the installation folder and never sent anywhere else.</p>
+
+    <div class="row">
+      <div>
+        <label for="host">Host</label>
+        <input id="host" name="host" value="localhost" required pattern="[A-Za-z0-9.\-]+" />
+      </div>
+      <div>
+        <label for="port">Port</label>
+        <input id="port" name="port" type="number" value="5432" min="1" max="65535" required />
+      </div>
+    </div>
+
+    <label for="database">Database</label>
+    <input id="database" name="database" value="shree_shyam" required pattern="[A-Za-z0-9_\-]+" />
+
+    <label for="username">Username</label>
+    <input id="username" name="username" value="hotel_app" required autocomplete="off" />
+
+    <label for="password">Password</label>
+    <input id="password" name="password" type="password" required autocomplete="new-password" />
+
+    <div class="error" id="error" role="alert"></div>
+    <button id="submit" type="submit">Save and start</button>
+    <div class="note">PostgreSQL must be installed and running on this PC. The application uses the existing <code>shree_shyam</code> database — no data is created, copied or deleted during setup. A strong SESSION_SECRET is generated automatically.</div>
+  </form>
+<script>
+  (function () {
+    var form = document.getElementById('setup-form');
+    var errorBox = document.getElementById('error');
+    var button = document.getElementById('submit');
+
+    function showError(msg) {
+      errorBox.textContent = String(msg);
+      errorBox.style.display = 'block';
+      button.disabled = false;
+      button.textContent = 'Save and start';
+    }
+
+    form.addEventListener('submit', function (event) {
+      event.preventDefault();
+      errorBox.style.display = 'none';
+      button.disabled = true;
+      button.textContent = 'Connecting…';
+
+      var fields = {
+        host: form.host.value,
+        port: form.port.value,
+        database: form.database.value,
+        username: form.username.value,
+        password: form.password.value
+      };
+
+      if (!window.desktopBridge || !window.desktopBridge.submitSetup) {
+        showError('Internal error: the setup bridge is unavailable. Please restart the application.');
+        return;
+      }
+      window.desktopBridge.submitSetup(fields).then(function (result) {
+        if (!result || !result.ok) {
+          showError((result && result.error) || 'Could not save the configuration.');
+          return;
+        }
+        button.textContent = 'Starting…';
+        // The main process takes over and loads the application.
+      }).catch(function () {
+        showError('Could not save the configuration. Check the logs folder for details.');
+      });
+    });
+  })();
+</script>
+</body>
+</html>

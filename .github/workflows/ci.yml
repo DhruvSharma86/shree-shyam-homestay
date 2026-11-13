@@ -31,6 +31,15 @@ jobs:
         working-directory: backend
         run: pytest -q
 
+  desktop-tests:
+    name: Desktop unit tests (Electron shell)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Run desktop unit tests (preinstalled Node.js)
+        working-directory: desktop
+        run: node --test test/
+
   postgres-integration:
     name: Alembic migrations + PostgreSQL integration tests
     runs-on: ubuntu-latest

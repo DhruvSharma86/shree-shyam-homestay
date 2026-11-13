@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:; connect-src 'none'; font-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Shree Shyam Home Stay</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+    background: radial-gradient(1200px 700px at 50% 30%, #1c6b3c 0%, #14532d 55%, #0d3a1f 100%);
+    color: #fdf6e3; min-height: 100vh; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 26px; user-select: none;
+  }
+  .logo { text-align: center; }
+  .logo .name { font-size: 34px; font-weight: 700; letter-spacing: .5px; }
+  .logo .tag { margin-top: 6px; font-size: 13px; color: #f5c86b; letter-spacing: 3px; text-transform: uppercase; }
+  .card {
+    width: min(420px, 90vw); background: rgba(0,0,0,.28); border: 1px solid rgba(245,158,11,.35);
+    border-radius: 14px; padding: 26px 30px; display: flex; flex-direction: column; gap: 16px;
+    box-shadow: 0 20px 60px rgba(0,0,0,.35);
+  }
+  .status { font-size: 14px; color: #ffe9b3; min-height: 20px; display:flex; align-items:center; gap:10px; }
+  .spinner { width: 16px; height: 16px; border-radius: 50%; border: 2px solid rgba(253,246,227,.25);
+    border-top-color: #f59e0b; animation: spin 0.9s linear infinite; flex: 0 0 auto; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .bar { height: 4px; border-radius: 2px; background: rgba(253,246,227,.15); overflow: hidden; }
+  .bar .fill { height: 100%; width: 35%; background: linear-gradient(90deg,#f59e0b,#fbbf24); border-radius: 2px;
+    animation: slide 1.6s ease-in-out infinite; }
+  @keyframes slide { 0% { transform: translateX(-100%);} 100% { transform: translateX(420px);} }
+  .note { font-size: 11px; color: rgba(253,246,227,.55); }
+</style>
+</head>
+<body>
+  <div class="logo">
+    <div class="name">Shree Shyam Home Stay</div>
+    <div class="tag">Home Stay Management</div>
+  </div>
+  <div class="card">
+    <div class="status"><span class="spinner"></span><span id="status">Starting…</span></div>
+    <div class="bar"><div class="fill"></div></div>
+    <div class="note">Connecting to your local PostgreSQL server and the application services. This usually takes a few seconds.</div>
+  </div>
+<script>
+  (function () {
+    var el = document.getElementById('status');
+    function setStatus(msg) { if (el) el.textContent = String(msg); }
+    if (window.desktopBridge && window.desktopBridge.onStatus) {
+      window.desktopBridge.onStatus(setStatus);
+      setStatus('Starting…');
+    }
+  })();
+</script>
+</body>
+</html>

@@ -1,0 +1,57 @@
+appId: com.shreeshyam.homestay.desktop
+productName: Shree Shyam Home Stay
+copyright: Copyright © Shree Shyam Home Stay
+
+directories:
+  output: dist
+  buildResources: assets
+
+files:
+  - main/**/*
+  - assets/icon.png
+  - package.json
+
+asar: true
+
+# Runtime resources — large, generated during the build, never committed.
+# Explicit `filter` is required: electron-builder's default ignore rules
+# silently drop nested node_modules otherwise (the Next.js standalone server
+# needs them at runtime).
+extraResources:
+  - from: .cache/staging/backend
+    to: backend
+    filter:
+      - "**/*"
+  # NOTE: `from` must be the PARENT of `standalone` — electron-builder always
+  # drops a root-level node_modules inside the resource `from` directory
+  # (node_modules of the Next.js standalone server is required at runtime).
+  - from: .cache/staging/frontend
+    to: frontend
+    filter:
+      - "**/*"
+  - from: .cache/staging/node
+    to: node
+    filter:
+      - "**/*"
+
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  artifactName: Shree-Shyam-Home-Stay-Setup.exe
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Shree Shyam Home Stay
+  # User data and the PostgreSQL database are NEVER removed on uninstall.
+  deleteAppDataOnUninstall: false
+  installerIcon: assets/icon.ico
+  uninstallerIcon: assets/icon.ico
+  installerHeaderIcon: assets/icon.ico
+
+publish: null

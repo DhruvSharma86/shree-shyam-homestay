@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:; connect-src 'none'; font-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Shree Shyam Home Stay — Error</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+    background: radial-gradient(1100px 700px at 50% 30%, #432018 0%, #2a1510 60%, #1b0d09 100%);
+    color: #fdebd0; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 32px;
+  }
+  .card { max-width: 640px; width: 100%; background: rgba(0,0,0,.35); border: 1px solid rgba(248,113,113,.4);
+    border-radius: 14px; padding: 28px 32px; box-shadow: 0 20px 60px rgba(0,0,0,.4); }
+  .badge { display: inline-block; background: #b91c1c; color: #fff; font-size: 11px; letter-spacing: 2px;
+    text-transform: uppercase; border-radius: 999px; padding: 4px 14px; margin-bottom: 12px; }
+  h1 { font-size: 24px; margin-bottom: 14px; color: #fecaca; }
+  pre { white-space: pre-wrap; word-break: break-word; font-family: Consolas, monospace; font-size: 12px;
+    background: rgba(0,0,0,.35); border-radius: 8px; padding: 14px 16px; max-height: 40vh; overflow: auto;
+    border: 1px solid rgba(253,246,227,.15); color: #fde68a; }
+  .hint { margin-top: 14px; font-size: 12px; color: rgba(253,246,227,.6); }
+  code { background: rgba(255,255,255,.08); padding: 1px 6px; border-radius: 4px; }
+</style>
+</head>
+<body>
+  <div class="card" role="alert" aria-live="assertive">
+    <span class="badge">Action needed</span>
+    <h1 id="title">Something went wrong</h1>
+    <pre id="detail">Please try again.</pre>
+    <p class="hint">Logs are stored in <code>%APPDATA%\ShreeShyamHomeStay\logs</code>. Close this window and start the application again after fixing the issue. Your data has not been modified.</p>
+  </div>
+<script>
+  (function () {
+    var titleEl = document.getElementById('title');
+    var detailEl = document.getElementById('detail');
+    try {
+      var raw = (window.location.hash || '').replace(/^#/, '');
+      if (raw) {
+        var parsed = JSON.parse(decodeURIComponent(raw));
+        if (parsed && typeof parsed === 'object') {
+          if (typeof parsed.title === 'string') titleEl.textContent = parsed.title;
+          if (typeof parsed.detail === 'string') detailEl.textContent = parsed.detail;
+        }
+      }
+    } catch (e) {
+      detailEl.textContent = 'An unexpected error occurred. See the logs folder for details.';
+    }
+  })();
+</script>
+</body>
+</html>
